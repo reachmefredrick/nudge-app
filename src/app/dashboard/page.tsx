@@ -297,6 +297,14 @@ export default function DashboardPage() {
                 >
                   Send Team Alert
                 </Button>
+                <Button
+                  variant="outlined"
+                  startIcon={<Notifications />}
+                  href="/teams-notifications"
+                  fullWidth
+                >
+                  Teams Notifications
+                </Button>
               </Box>
             </Paper>
 

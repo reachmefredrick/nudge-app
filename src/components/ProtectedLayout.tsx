@@ -22,6 +22,7 @@ import {
   Group,
   Settings,
   Logout,
+  Campaign,
 } from "@mui/icons-material";
 import { useAuth } from "@/contexts/AuthContext";
 import { useNotification } from "@/contexts/NotificationContext";
@@ -99,6 +100,11 @@ export default function ProtectedLayout({ children }: ProtectedLayoutProps) {
     { label: "Dashboard", path: "/dashboard", icon: <Dashboard /> },
     { label: "Reminders", path: "/reminders", icon: <Schedule /> },
     { label: "Teams", path: "/teams", icon: <Group /> },
+    {
+      label: "Teams Notifications",
+      path: "/teams-notifications",
+      icon: <Campaign />,
+    },
     { label: "Settings", path: "/settings", icon: <Settings /> },
   ];
 
