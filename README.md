@@ -79,8 +79,9 @@ cd nudge-app
 # Install dependencies
 npm install
 
-# Configure environment (see Teams Integration section)
-cp .env.example .env.local
+# Configure environment variables
+# The .env.local file is automatically created with development defaults
+# For Teams integration, update with your Azure AD app credentials
 
 # Start development server
 npm run dev
