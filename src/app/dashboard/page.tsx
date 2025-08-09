@@ -25,6 +25,7 @@ import {
 } from "@mui/icons-material";
 import { useAuth } from "@/contexts/AuthContext";
 import { useNotification } from "@/contexts/NotificationContext";
+import { userStorageService } from "@/services/userStorageService";
 import ProtectedLayout from "@/components/ProtectedLayout";
 
 interface Reminder {
@@ -46,47 +47,96 @@ export default function DashboardPage() {
   const { user } = useAuth();
   const { notifications, sendNotification } = useNotification();
   const [stats, setStats] = useState<Stats>({
-    totalReminders: 5,
-    activeReminders: 3,
-    completedToday: 2,
-    teamAlerts: 1,
+    totalReminders: 0,
+    activeReminders: 0,
+    completedToday: 0,
+    teamAlerts: 0,
   });
 
-  const [upcomingReminders] = useState<Reminder[]>([
-    {
-      id: 1,
-      title: "Team Meeting",
-      time: "2:00 PM",
-      type: "meeting",
-      priority: "high",
-    },
-    {
-      id: 2,
-      title: "Project Deadline",
-      time: "5:00 PM",
-      type: "deadline",
-      priority: "critical",
-    },
-    {
-      id: 3,
-      title: "Coffee Break",
-      time: "3:30 PM",
-      type: "break",
-      priority: "low",
-    },
-  ]);
+  const [upcomingReminders, setUpcomingReminders] = useState<Reminder[]>([]);
+
+  useEffect(() => {
+    // Load user-specific reminders and calculate stats
+    if (user) {
+      const reminders = userStorageService.getUserReminders(user.id);
+
+      if (reminders.length > 0) {
+        const now = new Date();
+        const today = new Date(
+          now.getFullYear(),
+          now.getMonth(),
+          now.getDate()
+        );
+
+        // Calculate stats
+        const totalReminders = reminders.length;
+        const activeReminders = reminders.filter(
+          (r: any) => r.active !== false
+        ).length;
+        const completedToday = reminders.filter((r: any) => {
+          const reminderDate = new Date(r.datetime);
+          return (
+            reminderDate >= today &&
+            reminderDate < new Date(today.getTime() + 24 * 60 * 60 * 1000)
+          );
+        }).length;
+        const teamAlerts = reminders.filter(
+          (r: any) => r.enableTeamsNotification || r.teamsNotificationEnabled
+        ).length;
+
+        setStats({
+          totalReminders,
+          activeReminders,
+          completedToday,
+          teamAlerts,
+        });
+
+        // Set upcoming reminders (next 5 active reminders)
+        const upcoming = reminders
+          .filter((r: any) => r.active !== false && new Date(r.datetime) > now)
+          .sort(
+            (a: any, b: any) =>
+              new Date(a.datetime).getTime() - new Date(b.datetime).getTime()
+          )
+          .slice(0, 5)
+          .map((r: any, index: number) => ({
+            id: r.id || index,
+            title: r.title,
+            time: new Date(r.datetime).toLocaleTimeString([], {
+              hour: "2-digit",
+              minute: "2-digit",
+            }),
+            type: r.isRecurring ? "recurring" : "reminder",
+            priority: r.priority || "medium",
+          }));
+
+        setUpcomingReminders(upcoming);
+      } else {
+        // Reset stats if no reminders
+        setStats({
+          totalReminders: 0,
+          activeReminders: 0,
+          completedToday: 0,
+          teamAlerts: 0,
+        });
+        setUpcomingReminders([]);
+      }
+    }
+  }, [user]);
 
   useEffect(() => {
     // Send a welcome notification when dashboard loads
-    const timer = setTimeout(() => {
-      sendNotification("Welcome to Nudge App!", {
-        body: "Your personalized reminder system is ready to help you stay organized.",
-        icon: "/logo192.png",
-      });
-    }, 2000);
+    if (user) {
+      const timer = setTimeout(() => {
+        sendNotification(`Welcome back, ${user.name}!`, {
+          body: "Your personalized reminder system is ready to help you stay organized.",
+          icon: "/logo192.png",
+        });
+      }, 2000);
 
-    return () => clearTimeout(timer);
-  }, [sendNotification]);
+      return () => clearTimeout(timer);
+    }
+  }, [sendNotification, user]);
 
   const testNotification = () => {
     sendNotification("Test Notification", {

@@ -37,6 +37,10 @@ import {
 } from "@mui/icons-material";
 import { useNotification } from "@/contexts/NotificationContext";
 import { useAuth } from "@/contexts/AuthContext";
+import { userStorageService } from "@/services/userStorageService";
+import { userService } from "@/services/userService";
+import { fileStorageService } from "@/services/fileStorageService";
+import { hybridFileStorageService } from "@/services/hybridFileStorageService";
 import ProtectedLayout from "@/components/ProtectedLayout";
 import ProfileManagement from "@/components/ProfileManagement";
 
@@ -139,13 +143,50 @@ export default function Settings() {
     severity: "success",
   });
 
+  const [storageStats, setStorageStats] = useState({
+    totalKeys: 0,
+    totalSize: 0,
+    remindersCount: 0,
+  });
+
+  const [usersStats, setUsersStats] = useState({
+    totalUsers: 0,
+    recentUsers: 0,
+    activeUsersWithReminders: 0,
+  });
+
+  const [fileStats, setFileStats] = useState({
+    totalUsers: 0,
+    totalReminders: 0,
+    fileSize: 0,
+    lastUpdated: "",
+  });
+
   useEffect(() => {
     // Load settings from localStorage
     const savedSettings = localStorage.getItem("nudge_settings");
     if (savedSettings) {
       setSettings(JSON.parse(savedSettings));
     }
-  }, []);
+
+    // Load storage stats for current user
+    if (user) {
+      const stats = userStorageService.getUserStorageStats(user.id);
+      setStorageStats(stats);
+
+      // Load users statistics
+      const userStats = userService.getUsersStats();
+      setUsersStats(userStats);
+
+      // Load file statistics
+      const filestats = userStorageService.getFileStatistics();
+      setFileStats(filestats);
+
+      // Load hybrid file storage statistics
+      const hybridStats = hybridFileStorageService.getFileStatistics();
+      console.log("📊 Hybrid file storage statistics:", hybridStats);
+    }
+  }, [user]);
 
   const saveSettings = () => {
     localStorage.setItem("nudge_settings", JSON.stringify(settings));
@@ -159,7 +200,7 @@ export default function Settings() {
   const handleSettingChange = (
     category: keyof Settings,
     field: string,
-    value: any
+    value: string | number | boolean
   ) => {
     setSettings((prev) => ({
       ...prev,
@@ -173,23 +214,49 @@ export default function Settings() {
   const clearAllData = () => {
     if (
       window.confirm(
-        "Are you sure you want to clear all data? This action cannot be undone."
+        "Are you sure you want to clear all your data? This action cannot be undone."
       )
     ) {
-      localStorage.clear();
-      setSnackbar({
-        open: true,
-        message: "All data has been cleared.",
-        severity: "warning",
-      });
+      if (user) {
+        userStorageService.clearUserData(user.id);
+        // Also clear general settings
+        localStorage.removeItem("nudge_settings");
+        setSnackbar({
+          open: true,
+          message: "All your data has been cleared.",
+          severity: "warning",
+        });
+        // Refresh storage stats
+        setStorageStats({ totalKeys: 0, totalSize: 0, remindersCount: 0 });
+
+        // Refresh user stats
+        const userStats = userService.getUsersStats();
+        setUsersStats(userStats);
+      }
     }
   };
 
   const exportData = () => {
+    if (!user) return;
+
+    // Export user data in the new JSON structure format
+    const userData = userStorageService.exportUserData(user.id);
+
     const data = {
-      settings,
-      reminders: JSON.parse(localStorage.getItem("nudge_reminders") || "[]"),
-      teams: JSON.parse(localStorage.getItem("nudge_teams") || "[]"),
+      exportType: "user-specific",
+      exportDate: new Date().toISOString(),
+      userData: userData,
+      // Legacy format for compatibility
+      legacy: {
+        user: {
+          name: user.name,
+          email: user.email,
+        },
+        settings,
+        reminders: userStorageService.getUserReminders(user.id),
+        teamsData: userStorageService.getUserTeamsData(user.id),
+        userSettings: userStorageService.getUserSettings(user.id),
+      },
     };
 
     const blob = new Blob([JSON.stringify(data, null, 2)], {
@@ -198,13 +265,126 @@ export default function Settings() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "nudge_data_backup.json";
+    a.download = `nudge-data-${user?.name || "user"}-${
+      new Date().toISOString().split("T")[0]
+    }.json`;
     a.click();
     URL.revokeObjectURL(url);
 
     setSnackbar({
       open: true,
-      message: "Data exported successfully!",
+      message: "Your data has been exported successfully!",
+      severity: "success",
+    });
+  };
+
+  const exportJsonDatabase = () => {
+    if (!user) return;
+
+    const jsonStructure = userStorageService.getJsonStructure();
+
+    const blob = new Blob([JSON.stringify(jsonStructure, null, 2)], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `nudge-reminders-database-${
+      new Date().toISOString().split("T")[0]
+    }.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+
+    setSnackbar({
+      open: true,
+      message: "Complete JSON database has been exported!",
+      severity: "success",
+    });
+  };
+
+  const exportCompleteUsersDatabase = () => {
+    if (!user) return;
+
+    const completeDatabase = userStorageService.exportCompleteUsersDatabase();
+
+    const blob = new Blob([completeDatabase], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `nudge-complete-users-database-${
+      new Date().toISOString().split("T")[0]
+    }.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+
+    setSnackbar({
+      open: true,
+      message:
+        "Complete users database (including auth data) has been exported!",
+      severity: "success",
+    });
+  };
+
+  const exportUsersJson = () => {
+    if (!user) return;
+
+    const usersJson = userService.exportUsersJson();
+
+    const blob = new Blob([usersJson], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `users-${new Date().toISOString().split("T")[0]}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+
+    setSnackbar({
+      open: true,
+      message: "Users.json file has been exported!",
+      severity: "success",
+    });
+  };
+
+  const exportRemindersJsonFile = () => {
+    if (!user) return;
+
+    const remindersJsonContent = userStorageService.exportRemindersJsonFile();
+
+    const blob = new Blob([remindersJsonContent], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `data-reminders-${
+      new Date().toISOString().split("T")[0]
+    }.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+
+    setSnackbar({
+      open: true,
+      message: "data/reminders.json file has been exported!",
+      severity: "success",
+    });
+  };
+
+  const syncAllToFile = () => {
+    if (!user) return;
+
+    userStorageService.syncAllToFile();
+
+    // Refresh file statistics
+    const filestats = userStorageService.getFileStatistics();
+    setFileStats(filestats);
+
+    setSnackbar({
+      open: true,
+      message: "All data synced to data/reminders.json!",
       severity: "success",
     });
   };
@@ -213,12 +393,20 @@ export default function Settings() {
     setTabValue(newValue);
   };
 
-  const SettingsSection = ({ title, icon, children }: any) => (
+  const SettingsSection = ({
+    title,
+    icon,
+    children,
+  }: {
+    title: string;
+    icon?: React.ReactNode;
+    children: React.ReactNode;
+  }) => (
     <Card sx={{ mb: 3 }}>
       <CardContent>
         <Box display="flex" alignItems="center" mb={2}>
-          {icon}
-          <Typography variant="h6" component="h2" ml={1}>
+          {icon && icon}
+          <Typography variant="h6" component="h2" ml={icon ? 1 : 0}>
             {title}
           </Typography>
         </Box>
@@ -555,25 +743,228 @@ export default function Settings() {
                   Manage your data, including export and deletion options.
                 </Typography>
               </Grid>
-              <Grid item xs={12} sm={6}>
+
+              {/* Storage Statistics */}
+              <Grid item xs={12}>
+                <Box
+                  sx={{
+                    border: 1,
+                    borderColor: "divider",
+                    borderRadius: 2,
+                    p: 2,
+                    bgcolor: "background.paper",
+                  }}
+                >
+                  <Typography variant="h6" gutterBottom>
+                    Storage Information
+                  </Typography>
+                  <Grid container spacing={2}>
+                    <Grid item xs={12} sm={4}>
+                      <Typography variant="body2" color="text.secondary">
+                        Data Entries
+                      </Typography>
+                      <Typography variant="h6">
+                        {storageStats.totalKeys}
+                      </Typography>
+                    </Grid>
+                    <Grid item xs={12} sm={4}>
+                      <Typography variant="body2" color="text.secondary">
+                        Active Reminders
+                      </Typography>
+                      <Typography variant="h6">
+                        {storageStats.remindersCount}
+                      </Typography>
+                    </Grid>
+                    <Grid item xs={12} sm={4}>
+                      <Typography variant="body2" color="text.secondary">
+                        Storage Size
+                      </Typography>
+                      <Typography variant="h6">
+                        {(storageStats.totalSize / 1024).toFixed(2)} KB
+                      </Typography>
+                    </Grid>
+                  </Grid>
+                </Box>
+              </Grid>
+
+              {/* User Statistics */}
+              <Grid item xs={12}>
+                <Box
+                  sx={{
+                    border: 1,
+                    borderColor: "divider",
+                    borderRadius: 2,
+                    p: 2,
+                    bgcolor: "background.paper",
+                  }}
+                >
+                  <Typography variant="h6" gutterBottom>
+                    System Statistics
+                  </Typography>
+                  <Grid container spacing={2}>
+                    <Grid item xs={12} sm={4}>
+                      <Typography variant="body2" color="text.secondary">
+                        Total Users
+                      </Typography>
+                      <Typography variant="h6">
+                        {usersStats.totalUsers}
+                      </Typography>
+                    </Grid>
+                    <Grid item xs={12} sm={4}>
+                      <Typography variant="body2" color="text.secondary">
+                        Recent Users (7 days)
+                      </Typography>
+                      <Typography variant="h6">
+                        {usersStats.recentUsers}
+                      </Typography>
+                    </Grid>
+                    <Grid item xs={12} sm={4}>
+                      <Typography variant="body2" color="text.secondary">
+                        Active Users
+                      </Typography>
+                      <Typography variant="h6">
+                        {usersStats.activeUsersWithReminders}
+                      </Typography>
+                    </Grid>
+                  </Grid>
+                </Box>
+              </Grid>
+
+              {/* File Statistics */}
+              <Grid item xs={12}>
+                <Box
+                  sx={{
+                    border: 1,
+                    borderColor: "divider",
+                    borderRadius: 2,
+                    p: 2,
+                    bgcolor: "background.paper",
+                  }}
+                >
+                  <Typography variant="h6" gutterBottom>
+                    data/reminders.json Statistics
+                  </Typography>
+                  <Grid container spacing={2}>
+                    <Grid item xs={12} sm={3}>
+                      <Typography variant="body2" color="text.secondary">
+                        Users in File
+                      </Typography>
+                      <Typography variant="h6">
+                        {fileStats.totalUsers}
+                      </Typography>
+                    </Grid>
+                    <Grid item xs={12} sm={3}>
+                      <Typography variant="body2" color="text.secondary">
+                        Total Reminders
+                      </Typography>
+                      <Typography variant="h6">
+                        {fileStats.totalReminders}
+                      </Typography>
+                    </Grid>
+                    <Grid item xs={12} sm={3}>
+                      <Typography variant="body2" color="text.secondary">
+                        File Size
+                      </Typography>
+                      <Typography variant="h6">
+                        {(fileStats.fileSize / 1024).toFixed(2)} KB
+                      </Typography>
+                    </Grid>
+                    <Grid item xs={12} sm={3}>
+                      <Typography variant="body2" color="text.secondary">
+                        Last Updated
+                      </Typography>
+                      <Typography variant="body2">
+                        {fileStats.lastUpdated
+                          ? new Date(fileStats.lastUpdated).toLocaleString()
+                          : "Never"}
+                      </Typography>
+                    </Grid>
+                  </Grid>
+                </Box>
+              </Grid>
+
+              <Grid item xs={12} sm={2}>
                 <Button
                   variant="outlined"
                   onClick={exportData}
                   startIcon={<Save />}
                   fullWidth
+                  disabled={!user}
                 >
-                  Export Data
+                  Export Your Data
                 </Button>
               </Grid>
-              <Grid item xs={12} sm={6}>
+              <Grid item xs={12} sm={2}>
+                <Button
+                  variant="outlined"
+                  onClick={exportUsersJson}
+                  startIcon={<Save />}
+                  fullWidth
+                  disabled={!user}
+                  color="info"
+                >
+                  Export users.json
+                </Button>
+              </Grid>
+              <Grid item xs={12} sm={2}>
+                <Button
+                  variant="outlined"
+                  onClick={exportRemindersJsonFile}
+                  startIcon={<Save />}
+                  fullWidth
+                  disabled={!user}
+                  color="success"
+                >
+                  Export reminders.json
+                </Button>
+              </Grid>
+              <Grid item xs={12} sm={2}>
+                <Button
+                  variant="outlined"
+                  onClick={exportJsonDatabase}
+                  startIcon={<Save />}
+                  fullWidth
+                  disabled={!user}
+                  color="secondary"
+                >
+                  Export Reminders DB
+                </Button>
+              </Grid>
+              <Grid item xs={12} sm={2}>
+                <Button
+                  variant="outlined"
+                  onClick={exportCompleteUsersDatabase}
+                  startIcon={<Save />}
+                  fullWidth
+                  disabled={!user}
+                  color="warning"
+                >
+                  Export Complete DB
+                </Button>
+              </Grid>
+              <Grid item xs={12} sm={2}>
+                <Button
+                  variant="outlined"
+                  onClick={syncAllToFile}
+                  startIcon={<Save />}
+                  fullWidth
+                  disabled={!user}
+                  color="primary"
+                >
+                  Sync to File
+                </Button>
+              </Grid>
+
+              <Grid item xs={12}>
                 <Button
                   variant="outlined"
                   color="error"
                   onClick={clearAllData}
                   startIcon={<Delete />}
                   fullWidth
+                  disabled={!user}
                 >
-                  Clear All Data
+                  Clear All Your Data
                 </Button>
               </Grid>
             </Grid>

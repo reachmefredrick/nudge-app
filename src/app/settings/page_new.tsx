@@ -159,7 +159,7 @@ export default function Settings() {
   const handleSettingChange = (
     category: keyof Settings,
     field: string,
-    value: any
+    value: string | number | boolean
   ) => {
     setSettings((prev) => ({
       ...prev,
@@ -213,12 +213,20 @@ export default function Settings() {
     setTabValue(newValue);
   };
 
-  const SettingsSection = ({ title, icon, children }: any) => (
+  const SettingsSection = ({
+    title,
+    icon,
+    children,
+  }: {
+    title: string;
+    icon?: React.ReactNode;
+    children: React.ReactNode;
+  }) => (
     <Card sx={{ mb: 3 }}>
       <CardContent>
         <Box display="flex" alignItems="center" mb={2}>
-          {icon}
-          <Typography variant="h6" component="h2" ml={1}>
+          {icon && icon}
+          <Typography variant="h6" component="h2" ml={icon ? 1 : 0}>
             {title}
           </Typography>
         </Box>

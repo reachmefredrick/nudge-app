@@ -8,6 +8,7 @@ import React, {
   ReactNode,
 } from "react";
 import { userService, type AuthUser } from "@/services/userService";
+import { userStorageService } from "@/services/userStorageService";
 
 interface AuthContextType {
   user: AuthUser | null;
@@ -56,6 +57,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         try {
           const parsedUser = JSON.parse(storedUser);
           setUser(parsedUser);
+
+          // Initialize user data in JSON storage format for existing user
+          userStorageService.initializeUser(
+            parsedUser.id,
+            parsedUser.name,
+            parsedUser.email
+          );
         } catch (error) {
           console.error("Error parsing stored user:", error);
           localStorage.removeItem("authUser");
@@ -69,6 +77,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     try {
       const authUser = await userService.login({ email, password });
       setUser(authUser);
+
+      // Initialize user data in JSON storage format
+      userStorageService.initializeUser(
+        authUser.id,
+        authUser.name,
+        authUser.email
+      );
+
       if (typeof window !== "undefined") {
         localStorage.setItem("authUser", JSON.stringify(authUser));
       }
@@ -86,6 +102,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     try {
       const authUser = await userService.register({ name, email, password });
       setUser(authUser);
+
+      // Initialize user data in JSON storage format
+      userStorageService.initializeUser(
+        authUser.id,
+        authUser.name,
+        authUser.email
+      );
+
       if (typeof window !== "undefined") {
         localStorage.setItem("authUser", JSON.stringify(authUser));
       }
@@ -131,6 +155,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   };
 
   const logout = () => {
+    // Clear user data from storage (optional - user might want to keep their data)
+    // Uncomment the next line if you want to clear user data on logout
+    // if (user) userStorageService.clearUserData(user.id);
+
     setUser(null);
     if (typeof window !== "undefined") {
       localStorage.removeItem("authUser");

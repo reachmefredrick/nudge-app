@@ -4,6 +4,7 @@ import { ThemeProvider, createTheme } from "@mui/material/styles";
 import CssBaseline from "@mui/material/CssBaseline";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { NotificationProvider } from "@/contexts/NotificationContext";
+import { TeamsProvider } from "@/contexts/TeamsContext";
 
 const theme = createTheme({
   palette: {
@@ -37,7 +38,9 @@ export default function RootLayout({
         <ThemeProvider theme={theme}>
           <CssBaseline />
           <AuthProvider>
-            <NotificationProvider>{children}</NotificationProvider>
+            <TeamsProvider>
+              <NotificationProvider>{children}</NotificationProvider>
+            </TeamsProvider>
           </AuthProvider>
         </ThemeProvider>
       </body>

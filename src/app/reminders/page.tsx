@@ -30,13 +30,21 @@ import {
   Schedule,
   Repeat,
   NotificationImportant,
+  Groups,
+  BugReport,
 } from "@mui/icons-material";
 import { DateTimePicker } from "@mui/x-date-pickers/DateTimePicker";
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
 import { AdapterDateFns } from "@mui/x-date-pickers/AdapterDateFns";
 import { useNotification } from "@/contexts/NotificationContext";
+import { useTeams } from "@/contexts/TeamsContext";
+import { useAuth } from "@/contexts/AuthContext";
+import { userStorageService } from "@/services/userStorageService";
+import { hybridFileStorageService } from "@/services/hybridFileStorageService";
 import ProtectedLayout from "@/components/ProtectedLayout";
+import type { ReminderData as SharedReminderData } from "@/types/shared";
 
+// Local interface for component state (dates as Date objects)
 interface ReminderData {
   id: number;
   title: string;
@@ -48,6 +56,23 @@ interface ReminderData {
   recurringInterval: number;
   active: boolean;
   createdAt: Date;
+  enableTeamsNotification: boolean;
+  teamsNotificationEnabled?: boolean;
+}
+
+interface StoredReminderData {
+  id: number;
+  title: string;
+  description: string;
+  datetime: string; // Date stored as string in JSON
+  priority: string;
+  isRecurring: boolean;
+  recurringType: string;
+  recurringInterval: number;
+  active: boolean;
+  createdAt: string; // Date stored as string in JSON
+  enableTeamsNotification: boolean;
+  teamsNotificationEnabled?: boolean;
 }
 
 interface FormData {
@@ -58,6 +83,7 @@ interface FormData {
   isRecurring: boolean;
   recurringType: string;
   recurringInterval: number;
+  teamsNotificationEnabled: boolean;
 }
 
 export default function RemindersPage() {
@@ -74,41 +100,59 @@ export default function RemindersPage() {
     isRecurring: false,
     recurringType: "daily",
     recurringInterval: 1,
+    teamsNotificationEnabled: false,
   });
 
   const {
     sendNotification,
     scheduleNotification,
     scheduleRecurringNotification,
+    scheduleTeamsReminderNotification,
+    testTeamsConnection,
   } = useNotification();
 
-  useEffect(() => {
-    // Load reminders from localStorage
-    const storedReminders = localStorage.getItem("reminders");
-    if (storedReminders) {
-      setReminders(
-        JSON.parse(storedReminders).map((r: any) => ({
-          ...r,
-          datetime: new Date(r.datetime),
-          createdAt: new Date(r.createdAt),
-        }))
-      );
-    }
-  }, []);
+  const teamsContext = useTeams();
+  const { user } = useAuth();
 
   useEffect(() => {
-    // Save reminders to localStorage
-    localStorage.setItem(
-      "reminders",
-      JSON.stringify(
-        reminders.map((r) => ({
-          ...r,
-          datetime: r.datetime.toISOString(),
-          createdAt: r.createdAt.toISOString(),
-        }))
-      )
-    );
-  }, [reminders]);
+    // Initialize hybrid file storage
+    hybridFileStorageService.initialize();
+
+    // Load reminders from localStorage for the current user
+    if (user) {
+      // Migrate old global data if it exists
+      userStorageService.migrateGlobalDataToUser(user.id);
+
+      const storedReminders = userStorageService.getUserReminders(user.id);
+      if (storedReminders.length > 0) {
+        setReminders(
+          storedReminders.map((r: StoredReminderData) => ({
+            ...r,
+            datetime: new Date(r.datetime),
+            createdAt: new Date(r.createdAt),
+            enableTeamsNotification:
+              r.enableTeamsNotification ?? r.teamsNotificationEnabled ?? false,
+          }))
+        );
+      }
+    } else {
+      // Clear reminders if no user is logged in
+      setReminders([]);
+    }
+  }, [user]);
+
+  useEffect(() => {
+    // Save reminders to localStorage for the current user
+    if (user && reminders.length >= 0) {
+      const remindersToStore = reminders.map((r) => ({
+        ...r,
+        datetime: r.datetime.toISOString(),
+        createdAt: r.createdAt.toISOString(),
+      }));
+
+      userStorageService.saveUserReminders(user.id, remindersToStore);
+    }
+  }, [reminders, user]);
 
   const handleOpen = (reminder: ReminderData | null = null) => {
     if (reminder) {
@@ -121,6 +165,7 @@ export default function RemindersPage() {
         isRecurring: reminder.isRecurring || false,
         recurringType: reminder.recurringType || "daily",
         recurringInterval: reminder.recurringInterval || 1,
+        teamsNotificationEnabled: reminder.teamsNotificationEnabled || false,
       });
     } else {
       setEditingReminder(null);
@@ -132,6 +177,7 @@ export default function RemindersPage() {
         isRecurring: false,
         recurringType: "daily",
         recurringInterval: 1,
+        teamsNotificationEnabled: false,
       });
     }
     setOpen(true);
@@ -142,29 +188,71 @@ export default function RemindersPage() {
     setEditingReminder(null);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     const newReminder: ReminderData = {
       id: editingReminder ? editingReminder.id : Date.now(),
       ...formData,
+      enableTeamsNotification: formData.teamsNotificationEnabled,
       createdAt: editingReminder ? editingReminder.createdAt : new Date(),
       active: true,
     };
 
     if (editingReminder) {
+      // Update existing reminder
       setReminders((prev) =>
         prev.map((r) => (r.id === editingReminder.id ? newReminder : r))
       );
+
+      // Update in file storage
+      if (user) {
+        const reminderToStore = {
+          ...newReminder,
+          datetime: newReminder.datetime.toISOString(),
+          createdAt: newReminder.createdAt.toISOString(),
+        };
+        userStorageService.updateReminderInFile(
+          user.id,
+          newReminder.id,
+          reminderToStore
+        );
+
+        // Also update in hybrid file storage for actual JSON file capture
+        hybridFileStorageService
+          .updateReminderInFile(user.id, newReminder.id, reminderToStore)
+          .catch((error) => {
+            console.error("Failed to update reminder in file storage:", error);
+          });
+      }
     } else {
+      // Add new reminder
       setReminders((prev) => [...prev, newReminder]);
+
+      // Add to file storage
+      if (user) {
+        const reminderToStore = {
+          ...newReminder,
+          datetime: newReminder.datetime.toISOString(),
+          createdAt: newReminder.createdAt.toISOString(),
+        };
+
+        userStorageService.addReminderToFile(user.id, reminderToStore);
+
+        // Also add to hybrid file storage for actual JSON file capture
+        hybridFileStorageService
+          .addReminderToFile(user.id, reminderToStore)
+          .catch((error) => {
+            console.error("Failed to add reminder to file storage:", error);
+          });
+      }
     }
 
     // Schedule the notification
-    scheduleReminderNotification(newReminder);
+    await scheduleReminderNotification(newReminder);
 
     handleClose();
   };
 
-  const scheduleReminderNotification = (reminder: ReminderData) => {
+  const scheduleReminderNotification = async (reminder: ReminderData) => {
     const now = new Date();
     const reminderTime = new Date(reminder.datetime);
     const delay = reminderTime.getTime() - now.getTime();
@@ -200,17 +288,66 @@ export default function RemindersPage() {
           delay
         );
       }
+
+      // Schedule Teams notification if enabled
+      if (reminder.teamsNotificationEnabled) {
+        try {
+          const result = await scheduleTeamsReminderNotification(
+            reminder.title,
+            reminder.description,
+            reminderTime,
+            reminder.priority as "low" | "medium" | "high"
+          );
+
+          if (result.success) {
+            console.log("Teams notification scheduled:", result.message);
+          } else {
+            console.warn("Teams notification failed:", result.error);
+          }
+        } catch (error) {
+          console.error("Error scheduling Teams notification:", error);
+        }
+      }
     }
   };
 
   const handleDelete = (id: number) => {
     setReminders((prev) => prev.filter((r) => r.id !== id));
+
+    // Delete from file storage
+    if (user) {
+      userStorageService.deleteReminderFromFile(user.id, id);
+
+      // Also delete from hybrid file storage for actual JSON file capture
+      hybridFileStorageService
+        .deleteReminderFromFile(user.id, id)
+        .catch((error) => {
+          console.error("Failed to delete reminder from file storage:", error);
+        });
+    }
   };
 
   const toggleActive = (id: number) => {
-    setReminders((prev) =>
-      prev.map((r) => (r.id === id ? { ...r, active: !r.active } : r))
-    );
+    setReminders((prev) => {
+      const updatedReminders = prev.map((r) =>
+        r.id === id ? { ...r, active: !r.active } : r
+      );
+
+      // Update in file storage
+      if (user) {
+        const updatedReminder = updatedReminders.find((r) => r.id === id);
+        if (updatedReminder) {
+          const reminderToStore = {
+            ...updatedReminder,
+            datetime: updatedReminder.datetime.toISOString(),
+            createdAt: updatedReminder.createdAt.toISOString(),
+          };
+          userStorageService.updateReminderInFile(user.id, id, reminderToStore);
+        }
+      }
+
+      return updatedReminders;
+    });
   };
 
   const testReminder = (reminder: ReminderData) => {
@@ -255,14 +392,142 @@ export default function RemindersPage() {
             sx={{ mb: 3 }}
           >
             <Typography variant="h4">Reminders</Typography>
-            <Button
-              variant="contained"
-              startIcon={<Add />}
-              onClick={() => handleOpen()}
-            >
-              New Reminder
-            </Button>
+            <Box display="flex" gap={2} alignItems="center">
+              {/* Teams Status */}
+              {teamsContext.isAuthenticated ? (
+                <Box display="flex" alignItems="center" gap={1}>
+                  <Groups color="primary" />
+                  <Typography variant="body2" color="primary">
+                    {teamsContext.selectedTeam?.displayName ||
+                      "No team selected"}
+                    {teamsContext.selectedChannel &&
+                      ` > ${teamsContext.selectedChannel.displayName}`}
+                  </Typography>
+                </Box>
+              ) : (
+                <Button
+                  variant="outlined"
+                  startIcon={<Groups />}
+                  onClick={teamsContext.signIn}
+                  disabled={teamsContext.isLoading}
+                  size="small"
+                >
+                  Sign in to Teams
+                </Button>
+              )}
+
+              <Button
+                variant="outlined"
+                startIcon={<BugReport />}
+                onClick={async () => {
+                  const result = await testTeamsConnection();
+                  if (result.success) {
+                    sendNotification("Teams Test", { body: result.message });
+                  } else {
+                    sendNotification("Teams Test Failed", {
+                      body: result.error || "Failed to send test message",
+                    });
+                  }
+                }}
+                disabled={!teamsContext.isAuthenticated}
+                size="small"
+              >
+                Test Teams
+              </Button>
+              <Button
+                variant="contained"
+                startIcon={<Add />}
+                onClick={() => handleOpen()}
+              >
+                New Reminder
+              </Button>
+            </Box>
           </Box>
+
+          {/* Teams Configuration Panel */}
+          {teamsContext.isAuthenticated && (
+            <Card sx={{ mb: 3 }}>
+              <CardContent>
+                <Typography variant="h6" sx={{ mb: 2 }}>
+                  <Groups sx={{ mr: 1, verticalAlign: "middle" }} />
+                  Microsoft Teams Configuration
+                </Typography>
+                <Grid container spacing={2}>
+                  <Grid item xs={12} md={6}>
+                    <FormControl fullWidth>
+                      <InputLabel>Team</InputLabel>
+                      <Select
+                        value={teamsContext.selectedTeam?.id || ""}
+                        onChange={(e) => {
+                          const team = teamsContext.teams.find(
+                            (t) => t.id === e.target.value
+                          );
+                          if (team) teamsContext.selectTeam(team);
+                        }}
+                        label="Team"
+                        disabled={teamsContext.isLoading}
+                      >
+                        {teamsContext.teams.map((team) => (
+                          <MenuItem key={team.id} value={team.id}>
+                            {team.displayName}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <FormControl fullWidth>
+                      <InputLabel>Channel</InputLabel>
+                      <Select
+                        value={teamsContext.selectedChannel?.id || ""}
+                        onChange={(e) => {
+                          const channel = teamsContext.channels.find(
+                            (c) => c.id === e.target.value
+                          );
+                          if (channel) teamsContext.selectChannel(channel);
+                        }}
+                        label="Channel"
+                        disabled={
+                          teamsContext.isLoading || !teamsContext.selectedTeam
+                        }
+                      >
+                        {teamsContext.channels.map((channel) => (
+                          <MenuItem key={channel.id} value={channel.id}>
+                            {channel.displayName}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                </Grid>
+                <Box
+                  sx={{ mt: 2, display: "flex", gap: 1, alignItems: "center" }}
+                >
+                  <Button
+                    variant="outlined"
+                    onClick={teamsContext.refreshTeams}
+                    disabled={teamsContext.isLoading}
+                    size="small"
+                  >
+                    Refresh Teams
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    onClick={teamsContext.signOut}
+                    disabled={teamsContext.isLoading}
+                    size="small"
+                  >
+                    Sign Out
+                  </Button>
+                  {teamsContext.error && (
+                    <Typography variant="body2" color="error">
+                      {teamsContext.error}
+                    </Typography>
+                  )}
+                </Box>
+              </CardContent>
+            </Card>
+          )}
 
           {reminders.length === 0 ? (
             <Card>
@@ -321,6 +586,17 @@ export default function RemindersPage() {
                           <Repeat sx={{ mr: 1, fontSize: 16 }} />
                           <Typography variant="body2" color="textSecondary">
                             {formatRecurring(reminder)}
+                          </Typography>
+                        </Box>
+                      )}
+
+                      {reminder.teamsNotificationEnabled && (
+                        <Box display="flex" alignItems="center" sx={{ mb: 1 }}>
+                          <Groups
+                            sx={{ mr: 1, fontSize: 16, color: "primary.main" }}
+                          />
+                          <Typography variant="body2" color="primary.main">
+                            Teams notification enabled
                           </Typography>
                         </Box>
                       )}
@@ -474,6 +750,44 @@ export default function RemindersPage() {
                   </FormControl>
                 </Box>
               )}
+
+              <Box sx={{ mt: 3, pt: 2, borderTop: "1px solid #e0e0e0" }}>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={
+                        formData.teamsNotificationEnabled &&
+                        teamsContext.isAuthenticated
+                      }
+                      onChange={(e) =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          teamsNotificationEnabled: e.target.checked,
+                        }))
+                      }
+                      color="primary"
+                      disabled={!teamsContext.isAuthenticated}
+                    />
+                  }
+                  label={
+                    <Box display="flex" alignItems="center" gap={1}>
+                      <Groups />
+                      <Typography>Send to Microsoft Teams</Typography>
+                    </Box>
+                  }
+                />
+                <Typography
+                  variant="caption"
+                  color="textSecondary"
+                  sx={{ ml: 4, display: "block" }}
+                >
+                  {teamsContext.isAuthenticated
+                    ? teamsContext.selectedTeam && teamsContext.selectedChannel
+                      ? `Notifications will be sent to ${teamsContext.selectedTeam.displayName} > ${teamsContext.selectedChannel.displayName}`
+                      : "Please select a team and channel above to enable Teams notifications"
+                    : "Sign in to Microsoft Teams to enable notifications"}
+                </Typography>
+              </Box>
             </DialogContent>
 
             <DialogActions>

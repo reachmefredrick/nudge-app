@@ -1,0 +1,47 @@
+{
+  "users": {
+    "2": {
+      "id": 2,
+      "name": "User 2",
+      "email": "user2@example.com",
+      "reminders": [
+        {
+          "id": 1754770318117,
+          "title": "Test Reminder 2",
+          "description": "Test Reminder 2",
+          "datetime": "2025-08-12T05:45:44.000Z",
+          "priority": "medium",
+          "isRecurring": true,
+          "recurringType": "daily",
+          "recurringInterval": 7,
+          "teamsNotificationEnabled": false,
+          "enableTeamsNotification": false,
+          "createdAt": "2025-08-09T20:11:58.117Z",
+          "active": true
+        },
+        {
+          "id": 1754771953908,
+          "title": "Test Reminder 1",
+          "description": "Test Reminder 1",
+          "datetime": "2025-08-09T20:38:53.624Z",
+          "priority": "medium",
+          "isRecurring": false,
+          "recurringType": "daily",
+          "recurringInterval": 1,
+          "teamsNotificationEnabled": false,
+          "enableTeamsNotification": false,
+          "createdAt": "2025-08-09T20:39:13.908Z",
+          "active": true
+        }
+      ],
+      "settings": {},
+      "teamsData": {},
+      "lastUpdated": "2025-08-09T20:41:14.678Z"
+    }
+  },
+  "meta": {
+    "lastUpdated": "2025-08-09T20:41:14.678Z",
+    "version": "1.0",
+    "totalReminders": 2
+  }
+}

@@ -2,10 +2,33 @@
   "users": [
     {
       "id": 1,
-      "name": "Demo User",
-      "email": "demo@example.com",
+      "name": "Test User",
+      "email": "test@example.com",
       "password": "password123",
-      "createdAt": "2025-08-05T00:00:00.000Z"
+      "createdAt": "2025-08-09T20:17:41.349Z",
+      "reminders": [],
+      "settings": {},
+      "teamsData": {}
+    },
+    {
+      "id": 2,
+      "name": "Test Flow User",
+      "email": "testflow@example.com",
+      "password": "password123",
+      "createdAt": "2025-08-09T20:25:49.548Z",
+      "reminders": [],
+      "settings": {},
+      "teamsData": {}
+    },
+    {
+      "id": 3,
+      "name": "Test Flow User",
+      "email": "testflow@example.com",
+      "password": "password123",
+      "createdAt": "2025-08-09T20:34:41.351Z",
+      "reminders": [],
+      "settings": {},
+      "teamsData": {}
     }
   ]
 }
