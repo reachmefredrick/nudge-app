@@ -116,6 +116,7 @@ export default function RemindersPage() {
     sendTeamsSelfNotification,
     testTeamsConnection,
     rescheduleAllReminders,
+    clearAllTimers,
   } = useNotification();
 
   const teamsContext = useTeams();
@@ -184,114 +185,11 @@ export default function RemindersPage() {
     }
   }, [reminders, user]);
 
-  // Schedule notifications for all existing active reminders
+  // Clear any existing timers when component mounts to prevent duplicates
   useEffect(() => {
-    console.log("🔥 useEffect for scheduling reminders triggered!");
-    console.log("📊 Reminders array:", reminders);
-    console.log("👤 User:", user);
-
-    const scheduleAllReminders = async () => {
-      console.log(
-        "🔄 useEffect triggered - Scheduling notifications for",
-        reminders.length,
-        "reminders"
-      );
-
-      for (const reminder of reminders) {
-        if (reminder.active) {
-          try {
-            console.log(
-              `📅 Scheduling reminder: ${reminder.title} (recurring: ${reminder.isRecurring}, teams: ${reminder.teamsNotificationEnabled})`
-            );
-
-            // Use the notification functions directly from context instead of the local function
-            const reminderTime = new Date(reminder.datetime);
-            const now = new Date();
-            const delay = reminderTime.getTime() - now.getTime();
-
-            if (reminder.isRecurring) {
-              console.log(
-                `🔁 Setting up recurring notification: ${reminder.title}`
-              );
-
-              const intervalMs =
-                (reminder.recurringInterval || 1) *
-                (reminder.recurringType === "weekly"
-                  ? 7 * 24 * 60 * 60 * 1000
-                  : 24 * 60 * 60 * 1000);
-
-              scheduleRecurringNotification(
-                reminder.title,
-                {
-                  body: reminder.description,
-                  icon: "/favicon.ico",
-                  tag: `reminder-${reminder.id}`,
-                },
-                intervalMs
-              );
-
-              if (reminder.teamsNotificationEnabled) {
-                scheduleTeamsRecurringNotification(
-                  reminder.title,
-                  reminder.description,
-                  intervalMs,
-                  reminder.priority as "low" | "medium" | "high"
-                );
-              }
-            } else if (delay > 0) {
-              console.log(
-                `⏰ Setting up one-time notification: ${reminder.title}`
-              );
-
-              scheduleNotification(
-                reminder.title,
-                {
-                  body: reminder.description,
-                  icon: "/favicon.ico",
-                  tag: `reminder-${reminder.id}`,
-                },
-                delay
-              );
-
-              if (reminder.teamsNotificationEnabled) {
-                scheduleTeamsReminderNotification(
-                  reminder.title,
-                  reminder.description,
-                  reminderTime,
-                  reminder.priority as "low" | "medium" | "high"
-                );
-              }
-            }
-
-            console.log(
-              `✅ Successfully scheduled notification for: ${reminder.title}`
-            );
-          } catch (error) {
-            console.error(
-              `❌ Failed to schedule notification for ${reminder.title}:`,
-              error
-            );
-          }
-        } else {
-          console.log(`⏸️ Skipping inactive reminder: ${reminder.title}`);
-        }
-      }
-    };
-
-    if (reminders.length > 0) {
-      console.log("🚀 Starting reminder scheduling process...");
-      scheduleAllReminders();
-    } else {
-      console.log("📭 No reminders to schedule");
-    }
-  }, [
-    reminders,
-    user,
-    scheduleNotification,
-    scheduleRecurringNotification,
-    scheduleTeamsReminderNotification,
-    scheduleTeamsRecurringNotification,
-  ]);
+    console.log("🧹 Clearing existing timers on component mount...");
+    clearAllTimers();
+  }, [clearAllTimers]); // Include dependency but only run on mount
 
   const handleOpen = (reminder: ReminderData | null = null) => {
     if (reminder) {
