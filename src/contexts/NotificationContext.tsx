@@ -47,6 +47,12 @@ interface NotificationContextType {
     dueDate: Date,
     priority?: "low" | "medium" | "high"
   ) => Promise<{ success: boolean; message?: string; error?: string }>;
+  sendTeamsSelfNotification: (
+    action: "created" | "updated" | "deleted",
+    reminderTitle: string,
+    reminderDateTime?: Date,
+    priority?: "low" | "medium" | "high"
+  ) => Promise<{ success: boolean; message?: string; error?: string }>;
   testTeamsConnection: () => Promise<{
     success: boolean;
     message?: string;
@@ -297,6 +303,58 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
     [teamsContext, scheduleNotification]
   );
 
+  const sendTeamsSelfNotification = useCallback(
+    async (
+      action: "created" | "updated" | "deleted",
+      reminderTitle: string,
+      reminderDateTime?: Date,
+      priority: "low" | "medium" | "high" = "medium"
+    ): Promise<{ success: boolean; message?: string; error?: string }> => {
+      try {
+        // Import teamsIntegrationService dynamically to avoid circular dependency
+        const { teamsIntegrationService } = await import("../services/teamsIntegrationService");
+        
+        const result = await teamsIntegrationService.sendReminderSelfNotification(
+          action,
+          reminderTitle,
+          reminderDateTime,
+          priority
+        );
+
+        if (result.success !== false) {
+          const actionVerb = {
+            created: "created",
+            updated: "updated", 
+            deleted: "deleted"
+          }[action];
+
+          // Also show a local notification
+          sendNotification(`Reminder ${actionVerb}`, {
+            body: `Teams notification sent: Your reminder "${reminderTitle}" has been ${actionVerb}.`,
+            icon: "/favicon.ico",
+          });
+
+          return {
+            success: true,
+            message: `Self-notification sent for ${actionVerb} reminder.`
+          };
+        } else {
+          return {
+            success: false,
+            error: result.error || `Failed to send ${action} self-notification`
+          };
+        }
+      } catch (error) {
+        console.error("Failed to send Teams self-notification:", error);
+        return {
+          success: false,
+          error: (error as Error).message
+        };
+      }
+    },
+    [sendNotification]
+  );
+
   const testTeamsConnection = useCallback(async () => {
     try {
       if (!teamsContext.isAuthenticated) {
@@ -367,6 +425,7 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
     clearNotifications,
     sendTeamsAlert,
     scheduleTeamsReminderNotification,
+    sendTeamsSelfNotification,
     testTeamsConnection,
   };
 

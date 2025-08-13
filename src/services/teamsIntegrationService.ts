@@ -460,6 +460,63 @@ class TeamsIntegrationService {
   }
 
   /**
+   * Send self-notification for reminder operations
+   */
+  async sendReminderSelfNotification(
+    action: "created" | "updated" | "deleted",
+    reminderTitle: string,
+    reminderDateTime?: Date,
+    priority: "low" | "medium" | "high" = "medium"
+  ): Promise<any> {
+    try {
+      if (!reminderDateTime) {
+        reminderDateTime = new Date();
+      }
+
+      switch (action) {
+        case "created":
+          return await this.graphService.sendReminderCreatedNotification(
+            reminderTitle,
+            reminderDateTime,
+            priority
+          );
+        case "updated":
+          return await this.graphService.sendReminderUpdatedNotification(
+            reminderTitle,
+            reminderDateTime,
+            priority
+          );
+        case "deleted":
+          return await this.graphService.sendSelfNotification(
+            "🗑️ Reminder Deleted",
+            `Your reminder "${reminderTitle}" has been deleted.`,
+            priority
+          );
+        default:
+          throw new Error(`Unknown action: ${action}`);
+      }
+    } catch (error) {
+      console.error(`Failed to send ${action} self-notification:`, error);
+      return { 
+        success: false, 
+        error: (error as Error).message,
+        fallback: true
+      };
+    }
+  }
+
+  /**
+   * Send general self-notification
+   */
+  async sendSelfNotification(
+    title: string,
+    message: string,
+    priority: "low" | "medium" | "high" = "medium"
+  ): Promise<any> {
+    return this.graphService.sendSelfNotification(title, message, priority);
+  }
+
+  /**
    * Helper to get next Friday at specified time
    */
   private getNextFridayTime(hour: number, minute: number): Date {

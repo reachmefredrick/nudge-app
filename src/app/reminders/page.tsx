@@ -108,6 +108,7 @@ export default function RemindersPage() {
     scheduleNotification,
     scheduleRecurringNotification,
     scheduleTeamsReminderNotification,
+    sendTeamsSelfNotification,
     testTeamsConnection,
   } = useNotification();
 
@@ -249,6 +250,22 @@ export default function RemindersPage() {
     // Schedule the notification
     await scheduleReminderNotification(newReminder);
 
+    // Send Teams self-notification if enabled
+    if (newReminder.enableTeamsNotification) {
+      try {
+        const action = editingReminder ? "updated" : "created";
+        await sendTeamsSelfNotification(
+          action,
+          newReminder.title,
+          newReminder.datetime,
+          newReminder.priority as "low" | "medium" | "high"
+        );
+      } catch (error) {
+        console.error("Failed to send Teams self-notification:", error);
+        // Continue execution even if self-notification fails
+      }
+    }
+
     handleClose();
   };
 
@@ -311,7 +328,10 @@ export default function RemindersPage() {
     }
   };
 
-  const handleDelete = (id: number) => {
+  const handleDelete = async (id: number) => {
+    // Find the reminder being deleted for self-notification
+    const reminderToDelete = reminders.find((r) => r.id === id);
+    
     setReminders((prev) => prev.filter((r) => r.id !== id));
 
     // Delete from file storage
@@ -324,6 +344,21 @@ export default function RemindersPage() {
         .catch((error) => {
           console.error("Failed to delete reminder from file storage:", error);
         });
+    }
+
+    // Send Teams self-notification if the reminder had Teams notifications enabled
+    if (reminderToDelete && reminderToDelete.enableTeamsNotification) {
+      try {
+        await sendTeamsSelfNotification(
+          "deleted",
+          reminderToDelete.title,
+          reminderToDelete.datetime,
+          reminderToDelete.priority as "low" | "medium" | "high"
+        );
+      } catch (error) {
+        console.error("Failed to send Teams delete self-notification:", error);
+        // Continue execution even if self-notification fails
+      }
     }
   };
 
