@@ -4,72 +4,25 @@
       "id": 1,
       "name": "Demo User",
       "email": "demo@example.com",
-      "reminders": [
-        {
-          "id": 1755099116500,
-          "title": "Reminder: Drink plenty of water",
-          "description": "Remind to drink plenty of water",
-          "datetime": "2025-08-13T15:35:23.000Z",
-          "priority": "high",
-          "isRecurring": true,
-          "recurringType": "minute",
-          "recurringInterval": 1,
-          "teamsNotificationEnabled": true,
-          "enableTeamsNotification": true,
-          "createdAt": "2025-08-13T15:31:56.500Z",
-          "active": true
-        },
-        {
-          "id": 1755099973240,
-          "title": "Remind to publish the content",
-          "description": "Remind to publish the content",
-          "datetime": "2025-08-13T15:45:29.574Z",
-          "priority": "high",
-          "isRecurring": true,
-          "recurringType": "minute",
-          "recurringInterval": 1,
-          "teamsNotificationEnabled": true,
-          "enableTeamsNotification": true,
-          "createdAt": "2025-08-13T15:46:13.240Z",
-          "active": true
-        },
-        {
-          "id": 1755104016598,
-          "title": "Talk to the team and plan the daily work",
-          "description": "Talk to the team and plan the daily work",
-          "datetime": "2025-08-13T16:55:05.583Z",
-          "priority": "high",
-          "isRecurring": true,
-          "recurringType": "minute",
-          "recurringInterval": 1,
-          "teamsNotificationEnabled": true,
-          "enableTeamsNotification": true,
-          "createdAt": "2025-08-13T16:53:36.598Z",
-          "active": true
-        }
-      ],
+      "reminders": [],
       "settings": {},
       "teamsData": [
         {
           "id": 1755104470168,
           "name": "Team 1",
           "description": "Team 1",
-          "members": [
-            "test@domain.com"
-          ],
+          "members": ["test@domain.com"],
           "color": "#f44336"
         },
         {
           "id": 1755104539039,
           "name": "Team 2",
           "description": "Team 2",
-          "members": [
-            "test@domain.com"
-          ],
+          "members": ["test@domain.com"],
           "color": "#f44336"
         }
       ],
-      "lastUpdated": "2025-08-13T17:03:29.958Z"
+      "lastUpdated": "2025-08-13T19:02:40.248Z"
     },
     "2": {
       "id": 2,
@@ -111,8 +64,8 @@
     }
   },
   "meta": {
-    "lastUpdated": "2025-08-13T17:03:29.958Z",
+    "lastUpdated": "2025-08-13T19:02:40.250Z",
     "version": "1.0",
-    "totalReminders": 5
+    "totalReminders": 2
   }
 }

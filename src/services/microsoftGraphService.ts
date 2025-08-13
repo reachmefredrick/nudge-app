@@ -122,6 +122,37 @@ export class MicrosoftGraphService {
     return accounts.length > 0 ? accounts[0] : null;
   }
 
+  // Add a diagnostic method to check configuration
+  checkConfiguration(): { isValid: boolean; issues: string[] } {
+    const issues: string[] = [];
+
+    if (!process.env.NEXT_PUBLIC_AZURE_CLIENT_ID) {
+      issues.push("Missing NEXT_PUBLIC_AZURE_CLIENT_ID environment variable");
+    } else if (
+      process.env.NEXT_PUBLIC_AZURE_CLIENT_ID ===
+      "your-azure-app-client-id-here"
+    ) {
+      issues.push("Azure Client ID is still set to placeholder value");
+    }
+
+    if (!process.env.NEXT_PUBLIC_AZURE_TENANT_ID) {
+      issues.push("Missing NEXT_PUBLIC_AZURE_TENANT_ID environment variable");
+    } else if (
+      process.env.NEXT_PUBLIC_AZURE_TENANT_ID === "your-azure-tenant-id-here"
+    ) {
+      issues.push("Azure Tenant ID is still set to placeholder value");
+    }
+
+    if (!this.msalInstance) {
+      issues.push("MSAL instance not initialized");
+    }
+
+    return {
+      isValid: issues.length === 0,
+      issues,
+    };
+  }
+
   async getMyTeams(): Promise<any[]> {
     try {
       if (!this.graphClient) throw new Error("Graph client not initialized");
@@ -139,14 +170,36 @@ export class MicrosoftGraphService {
     try {
       if (!this.graphClient) throw new Error("Graph client not initialized");
 
+      console.log(`🔍 Fetching channels for team ID: ${teamId}`);
+
       const response = await this.graphClient
         .api(`/teams/${teamId}/channels`)
         .get();
 
+      console.log(
+        `✅ Successfully loaded ${response.value?.length || 0} channels`
+      );
       return response.value || [];
-    } catch (error) {
-      console.error("Failed to get team channels:", error);
-      throw error;
+    } catch (error: any) {
+      console.error("❌ Failed to get team channels:", {
+        teamId,
+        error: error?.message || "Unknown error",
+        code: error?.code || "Unknown code",
+        details: error,
+      });
+
+      // Provide more specific error messages
+      if (error?.code === "Forbidden") {
+        throw new Error("Access denied. Please check Teams permissions.");
+      } else if (error?.code === "NotFound") {
+        throw new Error("Team not found or you don't have access to it.");
+      } else if (error?.code === "Unauthorized") {
+        throw new Error("Authentication failed. Please sign in again.");
+      } else {
+        throw new Error(
+          `Failed to load channels: ${error?.message || "Unknown error"}`
+        );
+      }
     }
   }
 

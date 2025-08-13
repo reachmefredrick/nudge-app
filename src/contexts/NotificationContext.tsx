@@ -64,6 +64,11 @@ interface NotificationContextType {
     message?: string;
     error?: string;
   }>;
+  rescheduleAllReminders: (reminders: any[]) => Promise<{
+    success: boolean;
+    scheduled: number;
+    errors: string[];
+  }>;
 }
 
 const NotificationContext = createContext<NotificationContextType | undefined>(
@@ -330,79 +335,72 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
       priority: "low" | "medium" | "high" = "medium"
     ): Promise<{ success: boolean; message?: string; error?: string }> => {
       try {
-        // Import teamsIntegrationService dynamically to avoid circular dependency
-        const { teamsIntegrationService } = await import(
-          "../services/teamsIntegrationService"
-        );
+        const actionEmojis = {
+          created: "✅",
+          updated: "📝",
+          deleted: "🗑️",
+        };
 
-        const result =
-          await teamsIntegrationService.sendReminderSelfNotification(
-            action,
-            reminderTitle,
-            reminderDateTime,
+        const actionVerbs = {
+          created: "created",
+          updated: "updated",
+          deleted: "deleted",
+        };
+
+        const actionEmoji = actionEmojis[action];
+        const actionVerb = actionVerbs[action];
+
+        // Send local notification first
+        sendNotification(`Reminder ${actionVerb}`, {
+          body: `Your reminder "${reminderTitle}" has been ${actionVerb}.`,
+          icon: "/favicon.ico",
+        });
+
+        // If Teams is configured, also send to Teams channel
+        if (
+          teamsContext.isAuthenticated &&
+          teamsContext.selectedTeam &&
+          teamsContext.selectedChannel
+        ) {
+          const title = `${actionEmoji} Reminder ${
+            actionVerb.charAt(0).toUpperCase() + actionVerb.slice(1)
+          }`;
+          const description = reminderDateTime
+            ? `Your reminder "${reminderTitle}" has been ${actionVerb} and is scheduled for ${reminderDateTime.toLocaleString()}.`
+            : `Your reminder "${reminderTitle}" has been ${actionVerb}.`;
+
+          const result = await teamsContext.sendMessage(
+            title,
+            description,
             priority
           );
 
-        // Handle different response types from the new implementation
-        if (result.success !== false) {
-          const actionVerb = {
-            created: "created",
-            updated: "updated",
-            deleted: "deleted",
-          }[action];
-
-          // Show appropriate local notification based on the method used
-          let notificationBody = "";
-          if (result.method === "activity") {
-            notificationBody = `Teams timeline updated: Your reminder "${reminderTitle}" has been ${actionVerb}.`;
-          } else if (result.method === "email") {
-            notificationBody = `Email sent: Your reminder "${reminderTitle}" has been ${actionVerb}.`;
-          } else if (result.method === "local") {
-            notificationBody = `Reminder ${actionVerb}: "${reminderTitle}" (processed locally).`;
+          if (result.success) {
+            return {
+              success: true,
+              message: `Teams notification sent for ${actionVerb} reminder to ${teamsContext.selectedTeam.displayName}/${teamsContext.selectedChannel.displayName}.`,
+            };
           } else {
-            notificationBody = `Teams notification: Your reminder "${reminderTitle}" has been ${actionVerb}.`;
+            return {
+              success: true, // Still success because local notification worked
+              message: `Local notification sent for ${actionVerb} reminder. Teams notification failed: ${result.error}`,
+            };
           }
-
-          sendNotification(`Reminder ${actionVerb}`, {
-            body: notificationBody,
-            icon: "/favicon.ico",
-          });
-
+        } else {
           return {
             success: true,
-            message:
-              result.message ||
-              `Self-notification processed for ${actionVerb} reminder using ${
-                result.method || "default"
-              } method.`,
-          };
-        } else {
-          // If Teams API fails completely, show local notification as fallback
-          const actionVerb = {
-            created: "created",
-            updated: "updated",
-            deleted: "deleted",
-          }[action];
-
-          sendNotification(`Reminder ${actionVerb}`, {
-            body: `Your reminder "${reminderTitle}" has been ${actionVerb}. (Teams API unavailable)`,
-            icon: "/favicon.ico",
-          });
-
-          return {
-            success: true, // Return success even if Teams fails, since local notification works
-            message: `Reminder ${actionVerb} confirmed (local notification fallback)`,
+            message: `Local notification sent for ${actionVerb} reminder.`,
           };
         }
       } catch (error) {
-        console.error("Failed to send Teams self-notification:", error);
+        console.error("Failed to send notification:", error);
         return {
           success: false,
           error: (error as Error).message,
         };
       }
     },
-    [sendNotification]
+    [teamsContext, sendNotification]
   );
 
   const testTeamsConnection = useCallback(async () => {
@@ -474,19 +472,32 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
       try {
         const scheduleNext = async () => {
           try {
-            // Import teamsIntegrationService dynamically to avoid circular dependency
-            const { teamsIntegrationService } = await import(
-              "../services/teamsIntegrationService"
-            );
+            console.log(`🔔 Sending Teams recurring notification: ${title}`);
 
-            await teamsIntegrationService.sendReminderSelfNotification(
-              "created", // Use "created" as a recurring reminder action
-              title,
-              new Date(),
-              priority
-            );
+            // Use the Teams context to send to the selected channel
+            if (
+              teamsContext.isAuthenticated &&
+              teamsContext.selectedTeam &&
+              teamsContext.selectedChannel
+            ) {
+              const result = await teamsContext.sendMessage(
+                title,
+                description,
+                priority
+              );
 
-            console.log(`Teams recurring notification sent: ${title}`);
+              if (result.success) {
+                console.log(`✅ Teams recurring notification sent: ${title}`);
+              } else {
+                console.error(
+                  `❌ Teams recurring notification failed: ${result.error}`
+                );
+              }
+            } else {
+              console.warn(
+                `⚠️ Teams not configured, skipping notification: ${title}`
+              );
+            }
           } catch (error) {
             console.error(
               "Failed to send Teams recurring notification:",
@@ -514,7 +525,171 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
         return { success: false, intervalId: null };
       }
     },
-    []
+    [teamsContext]
+  );
+
+  const rescheduleAllReminders = useCallback(
+    async (
+      reminders: any[]
+    ): Promise<{
+      success: boolean;
+      scheduled: number;
+      errors: string[];
+    }> => {
+      console.log("🔄 Re-scheduling all reminders...", reminders.length);
+
+      const errors: string[] = [];
+      let scheduled = 0;
+
+      for (const reminder of reminders) {
+        if (!reminder.active) {
+          console.log(`⏸️ Skipping inactive reminder: ${reminder.title}`);
+          continue;
+        }
+
+        try {
+          console.log(`📅 Re-scheduling: ${reminder.title}`);
+
+          const reminderTime = new Date(reminder.datetime);
+          const now = new Date();
+          const delay = reminderTime.getTime() - now.getTime();
+
+          // For recurring reminders, start immediately
+          if (reminder.isRecurring) {
+            const interval = reminder.recurringInterval || 86400000; // Default to daily
+
+            console.log(
+              `🔁 Starting recurring reminder: ${reminder.title} (interval: ${interval}ms)`
+            );
+
+            // Start browser notifications
+            scheduleRecurringNotification(
+              reminder.title,
+              {
+                body: reminder.description,
+                icon: "/favicon.ico",
+                tag: `reminder-${reminder.id}`,
+              },
+              interval
+            );
+
+            // Start Teams notifications if enabled
+            if (
+              reminder.enableTeamsNotification ||
+              reminder.teamsNotificationEnabled
+            ) {
+              console.log(
+                `📱 Scheduling Teams recurring notification: ${reminder.title}`
+              );
+              const result = scheduleTeamsRecurringNotification(
+                reminder.title,
+                reminder.description,
+                interval,
+                reminder.priority as "low" | "medium" | "high"
+              );
+
+              if (result.success) {
+                console.log(
+                  `✅ Teams recurring notification scheduled: ${reminder.title}`
+                );
+              } else {
+                console.warn(
+                  `⚠️ Teams recurring notification failed: ${reminder.title}`
+                );
+                errors.push(`Teams scheduling failed for ${reminder.title}`);
+              }
+            }
+
+            scheduled++;
+          }
+          // For one-time reminders, only schedule if time hasn't passed
+          else if (delay > 0) {
+            console.log(
+              `⏰ Scheduling one-time reminder: ${reminder.title} (in ${delay}ms)`
+            );
+
+            scheduleNotification(
+              reminder.title,
+              {
+                body: reminder.description,
+                icon: "/favicon.ico",
+                tag: `reminder-${reminder.id}`,
+              },
+              delay
+            );
+
+            // Schedule Teams notification if enabled
+            if (
+              reminder.enableTeamsNotification ||
+              reminder.teamsNotificationEnabled
+            ) {
+              try {
+                const result = await scheduleTeamsReminderNotification(
+                  reminder.title,
+                  reminder.description,
+                  reminderTime,
+                  reminder.priority as "low" | "medium" | "high"
+                );
+
+                if (result.success) {
+                  console.log(
+                    `✅ Teams notification scheduled: ${reminder.title}`
+                  );
+                } else {
+                  console.warn(
+                    `⚠️ Teams notification failed: ${reminder.title}`
+                  );
+                  errors.push(
+                    `Teams scheduling failed for ${reminder.title}: ${result.error}`
+                  );
+                }
+              } catch (error) {
+                console.error(
+                  `❌ Error scheduling Teams notification for ${reminder.title}:`,
+                  error
+                );
+                errors.push(
+                  `Teams error for ${reminder.title}: ${
+                    (error as Error).message
+                  }`
+                );
+              }
+            }
+
+            scheduled++;
+          } else {
+            console.log(`⏭️ Skipping past reminder: ${reminder.title}`);
+          }
+        } catch (error) {
+          console.error(`❌ Failed to schedule ${reminder.title}:`, error);
+          errors.push(
+            `Failed to schedule ${reminder.title}: ${(error as Error).message}`
+          );
+        }
+      }
+
+      const success = errors.length === 0;
+      console.log(
+        `🎯 Re-scheduling complete: ${scheduled} scheduled, ${errors.length} errors`
+      );
+
+      // Send summary notification
+      sendNotification("Reminders Re-scheduled", {
+        body: `Successfully scheduled ${scheduled} reminders${
+          errors.length > 0 ? ` with ${errors.length} errors` : ""
+        }`,
+        icon: "/favicon.ico",
+      });
+
+      return { success, scheduled, errors };
+    },
+    [
+      scheduleNotification,
+      scheduleRecurringNotification,
+      scheduleTeamsReminderNotification,
+      scheduleTeamsRecurringNotification,
+      sendNotification,
+    ]
   );
 
   const value: NotificationContextType = {
@@ -531,6 +706,7 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
     sendTeamsSelfNotification,
     scheduleTeamsRecurringNotification,
     testTeamsConnection,
+    rescheduleAllReminders,
   };
 
   return (

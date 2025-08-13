@@ -33,6 +33,7 @@ import {
   Groups,
   BugReport,
   PlayArrow,
+  Refresh,
 } from "@mui/icons-material";
 import { DateTimePicker } from "@mui/x-date-pickers/DateTimePicker";
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
@@ -114,6 +115,7 @@ export default function RemindersPage() {
     scheduleTeamsRecurringNotification,
     sendTeamsSelfNotification,
     testTeamsConnection,
+    rescheduleAllReminders,
   } = useNotification();
 
   const teamsContext = useTeams();
@@ -624,6 +626,55 @@ export default function RemindersPage() {
 
               <Button
                 variant="outlined"
+                startIcon={<Refresh />}
+                onClick={async () => {
+                  console.log("🔄 Re-scheduling all reminders...");
+
+                  // Get all reminders from storage
+                  const currentUserId = user?.id || 1;
+                  const storedReminders =
+                    userStorageService.getUserReminders(currentUserId);
+
+                  if (storedReminders.length === 0) {
+                    sendNotification("No Reminders", {
+                      body: "No reminders found to re-schedule",
+                    });
+                    return;
+                  }
+
+                  console.log(
+                    `📋 Found ${storedReminders.length} reminders to re-schedule`
+                  );
+
+                  try {
+                    const result = await rescheduleAllReminders(
+                      storedReminders
+                    );
+
+                    if (result.success) {
+                      sendNotification("Re-scheduling Complete", {
+                        body: `Successfully re-scheduled ${result.scheduled} reminders`,
+                      });
+                    } else {
+                      sendNotification("Re-scheduling Completed with Errors", {
+                        body: `Re-scheduled ${result.scheduled} reminders with ${result.errors.length} errors`,
+                      });
+                      console.warn("🚨 Re-scheduling errors:", result.errors);
+                    }
+                  } catch (error) {
+                    console.error("❌ Failed to re-schedule reminders:", error);
+                    sendNotification("Re-scheduling Failed", {
+                      body: `Error: ${(error as Error).message}`,
+                    });
+                  }
+                }}
+                size="small"
+              >
+                Re-schedule All
+              </Button>
+
+              <Button
+                variant="outlined"
                 startIcon={<PlayArrow />}
                 onClick={async () => {
                   console.log("🚀 Manual trigger activated!");
@@ -804,17 +855,34 @@ export default function RemindersPage() {
                           teamsContext.isLoading || !teamsContext.selectedTeam
                         }
                       >
-                        {teamsContext.channels.map((channel) => (
-                          <MenuItem key={channel.id} value={channel.id}>
-                            {channel.displayName}
+                        {teamsContext.isLoading && teamsContext.selectedTeam ? (
+                          <MenuItem disabled>
+                            <em>Loading channels...</em>
                           </MenuItem>
-                        ))}
+                        ) : teamsContext.channels.length === 0 &&
+                          teamsContext.selectedTeam ? (
+                          <MenuItem disabled>
+                            <em>No channels available or failed to load</em>
+                          </MenuItem>
+                        ) : (
+                          teamsContext.channels.map((channel) => (
+                            <MenuItem key={channel.id} value={channel.id}>
+                              {channel.displayName}
+                            </MenuItem>
+                          ))
+                        )}
                       </Select>
                     </FormControl>
                   </Grid>
                 </Grid>
                 <Box
-                  sx={{ mt: 2, display: "flex", gap: 1, alignItems: "center" }}
+                  sx={{
+                    mt: 2,
+                    display: "flex",
+                    gap: 1,
+                    alignItems: "center",
+                    flexWrap: "wrap",
+                  }}
                 >
                   <Button
                     variant="outlined"
@@ -824,6 +892,20 @@ export default function RemindersPage() {
                   >
                     Refresh Teams
                   </Button>
+                  {teamsContext.selectedTeam &&
+                    teamsContext.channels.length === 0 && (
+                      <Button
+                        variant="outlined"
+                        onClick={() =>
+                          teamsContext.selectTeam(teamsContext.selectedTeam!)
+                        }
+                        disabled={teamsContext.isLoading}
+                        size="small"
+                        color="warning"
+                      >
+                        Retry Channels
+                      </Button>
+                    )}
                   <Button
                     variant="outlined"
                     onClick={teamsContext.signOut}
@@ -833,9 +915,24 @@ export default function RemindersPage() {
                     Sign Out
                   </Button>
                   {teamsContext.error && (
-                    <Typography variant="body2" color="error">
-                      {teamsContext.error}
-                    </Typography>
+                    <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                      <Typography variant="body2" color="error">
+                        {teamsContext.error}
+                      </Typography>
+                      {teamsContext.error.includes("channel") && (
+                        <Button
+                          variant="text"
+                          size="small"
+                          color="error"
+                          onClick={() =>
+                            teamsContext.selectTeam(teamsContext.selectedTeam!)
+                          }
+                          disabled={teamsContext.isLoading}
+                        >
+                          Try Again
+                        </Button>
+                      )}
+                    </Box>
                   )}
                 </Box>
               </CardContent>

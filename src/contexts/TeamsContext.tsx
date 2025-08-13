@@ -147,15 +147,34 @@ export const TeamsProvider: React.FC<TeamsProviderProps> = ({ children }) => {
       setIsLoading(true);
       setError(null);
 
+      // Check configuration first
+      const config = graphService.checkConfiguration();
+      if (!config.isValid) {
+        const configError = `Configuration issues detected:\n${config.issues.join(
+          "\n"
+        )}`;
+        console.error("❌ Configuration problems:", config.issues);
+        setError(
+          "Azure configuration is incomplete. Please check your .env.local file."
+        );
+        return;
+      }
+
       const result = await graphService.signIn();
       if (result) {
         setIsAuthenticated(true);
         setUser(result.account);
         await loadTeams();
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Sign in failed:", error);
-      setError("Sign in failed. Please try again.");
+      if (error?.message?.includes("AADSTS")) {
+        setError(
+          "Azure AD authentication failed. Please check your app registration."
+        );
+      } else {
+        setError("Sign in failed. Please try again.");
+      }
     } finally {
       setIsLoading(false);
     }
@@ -219,10 +238,14 @@ export const TeamsProvider: React.FC<TeamsProviderProps> = ({ children }) => {
   const selectTeam = useCallback(
     async (team: Team) => {
       try {
+        console.log(
+          `🔄 Loading channels for team: ${team.displayName} (${team.id})`
+        );
         setSelectedTeam(team);
         setIsLoading(true);
         setChannels([]);
         setSelectedChannel(null);
+        setError(null); // Clear any previous errors
 
         const channelsData = await graphService.getTeamChannels(team.id);
         setChannels(channelsData);
@@ -261,9 +284,17 @@ export const TeamsProvider: React.FC<TeamsProviderProps> = ({ children }) => {
           // Save the selection
           saveTeamsSelection(team, selectedChannelToSet);
         }
-      } catch (error) {
-        console.error("Failed to load team channels:", error);
-        setError("Failed to load team channels");
+      } catch (error: any) {
+        console.error("❌ Failed to load team channels:", {
+          teamName: team.displayName,
+          teamId: team.id,
+          error: error?.message || "Unknown error",
+        });
+        setError(
+          error?.message || "Failed to load team channels. Please try again."
+        );
+        // Keep the team selected even if channels fail to load
+        // This allows users to retry or manually refresh
       } finally {
         setIsLoading(false);
       }
