@@ -331,7 +331,7 @@ export default function RemindersPage() {
   const handleDelete = async (id: number) => {
     // Find the reminder being deleted for self-notification
     const reminderToDelete = reminders.find((r) => r.id === id);
-    
+
     setReminders((prev) => prev.filter((r) => r.id !== id));
 
     // Delete from file storage

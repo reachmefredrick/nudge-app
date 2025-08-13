@@ -497,10 +497,10 @@ class TeamsIntegrationService {
       }
     } catch (error) {
       console.error(`Failed to send ${action} self-notification:`, error);
-      return { 
-        success: false, 
+      return {
+        success: false,
         error: (error as Error).message,
-        fallback: true
+        fallback: true,
       };
     }
   }
