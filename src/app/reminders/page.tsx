@@ -203,7 +203,66 @@ export default function RemindersPage() {
             console.log(
               `📅 Scheduling reminder: ${reminder.title} (recurring: ${reminder.isRecurring}, teams: ${reminder.teamsNotificationEnabled})`
             );
-            await scheduleReminderNotification(reminder);
+
+            // Use the notification functions directly from context instead of the local function
+            const reminderTime = new Date(reminder.datetime);
+            const now = new Date();
+            const delay = reminderTime.getTime() - now.getTime();
+
+            if (reminder.isRecurring) {
+              console.log(
+                `🔁 Setting up recurring notification: ${reminder.title}`
+              );
+
+              const intervalMs =
+                (reminder.recurringInterval || 1) *
+                (reminder.recurringType === "weekly"
+                  ? 7 * 24 * 60 * 60 * 1000
+                  : 24 * 60 * 60 * 1000);
+
+              scheduleRecurringNotification(
+                reminder.title,
+                {
+                  body: reminder.description,
+                  icon: "/favicon.ico",
+                  tag: `reminder-${reminder.id}`,
+                },
+                intervalMs
+              );
+
+              if (reminder.teamsNotificationEnabled) {
+                scheduleTeamsRecurringNotification(
+                  reminder.title,
+                  reminder.description,
+                  intervalMs,
+                  reminder.priority as "low" | "medium" | "high"
+                );
+              }
+            } else if (delay > 0) {
+              console.log(
+                `⏰ Setting up one-time notification: ${reminder.title}`
+              );
+
+              scheduleNotification(
+                reminder.title,
+                {
+                  body: reminder.description,
+                  icon: "/favicon.ico",
+                  tag: `reminder-${reminder.id}`,
+                },
+                delay
+              );
+
+              if (reminder.teamsNotificationEnabled) {
+                scheduleTeamsReminderNotification(
+                  reminder.title,
+                  reminder.description,
+                  reminderTime,
+                  reminder.priority as "low" | "medium" | "high"
+                );
+              }
+            }
+
             console.log(
               `✅ Successfully scheduled notification for: ${reminder.title}`
             );
@@ -225,7 +284,14 @@ export default function RemindersPage() {
     } else {
       console.log("📭 No reminders to schedule");
     }
-  }, [reminders.length, user]); // Only run when reminders are loaded/changed
+  }, [
+    reminders,
+    user,
+    scheduleNotification,
+    scheduleRecurringNotification,
+    scheduleTeamsReminderNotification,
+    scheduleTeamsRecurringNotification,
+  ]);
 
   const handleOpen = (reminder: ReminderData | null = null) => {
     if (reminder) {

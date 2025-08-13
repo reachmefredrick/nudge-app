@@ -114,6 +114,19 @@ export const TeamsProvider: React.FC<TeamsProviderProps> = ({ children }) => {
     return { selectedTeam: null, selectedChannel: null };
   }, []);
 
+  const loadTeams = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      const teamsData = await graphService.getMyTeams();
+      setTeams(teamsData);
+    } catch (error) {
+      console.error("Failed to load teams:", error);
+      setError("Failed to load teams");
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
   const initializeAuth = useCallback(async () => {
     try {
       await graphService.initialize();
@@ -123,24 +136,24 @@ export const TeamsProvider: React.FC<TeamsProviderProps> = ({ children }) => {
       if (authenticated) {
         const account = graphService.getCurrentAccount();
         setUser(account);
-        await loadTeams();
-
-        // After loading teams, try to restore previous selection
-        const storedSelection = loadTeamsSelection();
-        if (storedSelection.selectedTeam) {
-          console.log("🔄 Restoring previous teams selection...");
-          // We'll set this after teams are loaded in the loadTeams effect
-        }
+        // Teams will be loaded by a separate useEffect
       }
     } catch (error) {
       console.error("Failed to initialize auth:", error);
       setError("Failed to initialize authentication");
     }
-  }, [loadTeamsSelection]);
+  }, []);
 
   useEffect(() => {
     initializeAuth();
   }, [initializeAuth]);
+
+  // Load teams when authenticated
+  useEffect(() => {
+    if (isAuthenticated) {
+      loadTeams();
+    }
+  }, [isAuthenticated, loadTeams]);
 
   const signIn = async () => {
     try {
@@ -205,35 +218,6 @@ export const TeamsProvider: React.FC<TeamsProviderProps> = ({ children }) => {
       setIsLoading(false);
     }
   };
-
-  const loadTeams = useCallback(async () => {
-    try {
-      setIsLoading(true);
-      const teamsData = await graphService.getMyTeams();
-      setTeams(teamsData);
-
-      // After teams are loaded, try to restore previous selection
-      const storedSelection = loadTeamsSelection();
-      if (storedSelection.selectedTeam && teamsData.length > 0) {
-        // Find the stored team in the current teams list
-        const matchingTeam = teamsData.find(
-          (t) => t.id === storedSelection.selectedTeam?.id
-        );
-        if (matchingTeam) {
-          console.log("✅ Restoring team selection:", matchingTeam.displayName);
-          // Use setTimeout to avoid state update issues
-          setTimeout(() => {
-            selectTeam(matchingTeam);
-          }, 100);
-        }
-      }
-    } catch (error) {
-      console.error("Failed to load teams:", error);
-      setError("Failed to load teams");
-    } finally {
-      setIsLoading(false);
-    }
-  }, [loadTeamsSelection]);
 
   const selectTeam = useCallback(
     async (team: Team) => {
@@ -356,6 +340,26 @@ export const TeamsProvider: React.FC<TeamsProviderProps> = ({ children }) => {
   const refreshTeams = async () => {
     await loadTeams();
   };
+
+  // Restore team selection after teams are loaded
+  useEffect(() => {
+    if (teams.length > 0) {
+      const storedSelection = loadTeamsSelection();
+      if (storedSelection.selectedTeam) {
+        // Find the stored team in the current teams list
+        const matchingTeam = teams.find(
+          (t) => t.id === storedSelection.selectedTeam?.id
+        );
+        if (matchingTeam) {
+          console.log("✅ Restoring team selection:", matchingTeam.displayName);
+          // Use setTimeout to avoid state update issues
+          setTimeout(() => {
+            selectTeam(matchingTeam);
+          }, 100);
+        }
+      }
+    }
+  }, [teams, loadTeamsSelection, selectTeam]);
 
   const value: TeamsContextType = {
     isAuthenticated,
