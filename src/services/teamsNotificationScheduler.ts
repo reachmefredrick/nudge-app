@@ -12,7 +12,13 @@ export interface ScheduledNotification {
   priority: "low" | "medium" | "high";
   scheduleTime: Date;
   recurring?: {
-    type: "daily" | "weekly" | "monthly" | "custom";
+    type:
+      | "minute"
+      | "every5minutes"
+      | "daily"
+      | "weekly"
+      | "monthly"
+      | "custom";
     interval: number; // for custom intervals (in milliseconds)
     endDate?: Date;
     daysOfWeek?: number[]; // 0-6, where 0 is Sunday
@@ -415,6 +421,14 @@ export class TeamsNotificationScheduler {
     const next = new Date(fromDate);
 
     switch (recurring.type) {
+      case "minute":
+        next.setTime(next.getTime() + recurring.interval * 60 * 1000);
+        break;
+
+      case "every5minutes":
+        next.setTime(next.getTime() + 5 * 60 * 1000);
+        break;
+
       case "daily":
         next.setDate(next.getDate() + recurring.interval);
         break;

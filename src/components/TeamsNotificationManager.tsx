@@ -60,7 +60,13 @@ interface ScheduledNotification {
   priority: "low" | "medium" | "high";
   scheduleTime: Date;
   recurring?: {
-    type: "daily" | "weekly" | "monthly" | "custom";
+    type:
+      | "minute"
+      | "every5minutes"
+      | "daily"
+      | "weekly"
+      | "monthly"
+      | "custom";
     interval: number;
     endDate?: Date;
     daysOfWeek?: number[];
@@ -80,7 +86,13 @@ interface NotificationFormData {
   scheduleTime: Date | null;
   isRecurring: boolean;
   recurring: {
-    type: "daily" | "weekly" | "monthly" | "custom";
+    type:
+      | "minute"
+      | "every5minutes"
+      | "daily"
+      | "weekly"
+      | "monthly"
+      | "custom";
     interval: number;
     endDate: Date | null;
     daysOfWeek: number[];
@@ -681,6 +693,10 @@ const TeamsNotificationManager: React.FC = () => {
                           })
                         }
                       >
+                        <MenuItem value="minute">Every Minute</MenuItem>
+                        <MenuItem value="every5minutes">
+                          Every 5 Minutes
+                        </MenuItem>
                         <MenuItem value="daily">Daily</MenuItem>
                         <MenuItem value="weekly">Weekly</MenuItem>
                         <MenuItem value="monthly">Monthly</MenuItem>

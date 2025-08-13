@@ -189,7 +189,7 @@ class TeamsIntegrationService {
     schedule: {
       startTime: Date;
       recurrence: {
-        type: "daily" | "weekly" | "monthly";
+        type: "minute" | "every5minutes" | "daily" | "weekly" | "monthly";
         interval: number;
         daysOfWeek?: number[];
         endDate?: Date;

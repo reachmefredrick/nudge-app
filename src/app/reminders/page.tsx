@@ -32,6 +32,7 @@ import {
   NotificationImportant,
   Groups,
   BugReport,
+  PlayArrow,
 } from "@mui/icons-material";
 import { DateTimePicker } from "@mui/x-date-pickers/DateTimePicker";
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
@@ -87,6 +88,8 @@ interface FormData {
 }
 
 export default function RemindersPage() {
+  console.log("🎯 RemindersPage component rendering...");
+
   const [reminders, setReminders] = useState<ReminderData[]>([]);
   const [open, setOpen] = useState(false);
   const [editingReminder, setEditingReminder] = useState<ReminderData | null>(
@@ -108,6 +111,7 @@ export default function RemindersPage() {
     scheduleNotification,
     scheduleRecurringNotification,
     scheduleTeamsReminderNotification,
+    scheduleTeamsRecurringNotification,
     sendTeamsSelfNotification,
     testTeamsConnection,
   } = useNotification();
@@ -115,17 +119,37 @@ export default function RemindersPage() {
   const teamsContext = useTeams();
   const { user } = useAuth();
 
+  console.log("👤 Current user in RemindersPage:", user);
+
   useEffect(() => {
+    console.log("📦 Loading reminders useEffect triggered");
     // Initialize hybrid file storage
     hybridFileStorageService.initialize();
 
-    // Load reminders from localStorage for the current user
-    if (user) {
-      // Migrate old global data if it exists
-      userStorageService.migrateGlobalDataToUser(user.id);
+    // Load reminders from localStorage for the current user OR use default user ID for testing
+    const currentUserId = user?.id || 1; // Default to user ID 1 for testing
+    console.log("🔧 Using user ID for reminders:", currentUserId);
 
-      const storedReminders = userStorageService.getUserReminders(user.id);
+    // Test: Try to load reminders directly from file
+    console.log("🧪 Testing direct file access...");
+    try {
+      const directReminders =
+        userStorageService.getUserReminders(currentUserId);
+      console.log("📋 Direct reminders result:", directReminders);
+    } catch (error) {
+      console.error("❌ Error loading direct reminders:", error);
+    }
+
+    if (currentUserId) {
+      // Migrate old global data if it exists
+      userStorageService.migrateGlobalDataToUser(currentUserId);
+
+      const storedReminders =
+        userStorageService.getUserReminders(currentUserId);
+      console.log("📦 Loaded reminders from storage:", storedReminders);
+
       if (storedReminders.length > 0) {
+        console.log("✅ Setting reminders in state:", storedReminders.length);
         setReminders(
           storedReminders.map((r: StoredReminderData) => ({
             ...r,
@@ -135,8 +159,11 @@ export default function RemindersPage() {
               r.enableTeamsNotification ?? r.teamsNotificationEnabled ?? false,
           }))
         );
+      } else {
+        console.log("📭 No stored reminders found");
       }
     } else {
+      console.log("🚫 No user ID available, clearing reminders");
       // Clear reminders if no user is logged in
       setReminders([]);
     }
@@ -154,6 +181,49 @@ export default function RemindersPage() {
       userStorageService.saveUserReminders(user.id, remindersToStore);
     }
   }, [reminders, user]);
+
+  // Schedule notifications for all existing active reminders
+  useEffect(() => {
+    console.log("🔥 useEffect for scheduling reminders triggered!");
+    console.log("📊 Reminders array:", reminders);
+    console.log("👤 User:", user);
+
+    const scheduleAllReminders = async () => {
+      console.log(
+        "🔄 useEffect triggered - Scheduling notifications for",
+        reminders.length,
+        "reminders"
+      );
+
+      for (const reminder of reminders) {
+        if (reminder.active) {
+          try {
+            console.log(
+              `📅 Scheduling reminder: ${reminder.title} (recurring: ${reminder.isRecurring}, teams: ${reminder.teamsNotificationEnabled})`
+            );
+            await scheduleReminderNotification(reminder);
+            console.log(
+              `✅ Successfully scheduled notification for: ${reminder.title}`
+            );
+          } catch (error) {
+            console.error(
+              `❌ Failed to schedule notification for ${reminder.title}:`,
+              error
+            );
+          }
+        } else {
+          console.log(`⏸️ Skipping inactive reminder: ${reminder.title}`);
+        }
+      }
+    };
+
+    if (reminders.length > 0) {
+      console.log("🚀 Starting reminder scheduling process...");
+      scheduleAllReminders();
+    } else {
+      console.log("📭 No reminders to schedule");
+    }
+  }, [reminders.length, user]); // Only run when reminders are loaded/changed
 
   const handleOpen = (reminder: ReminderData | null = null) => {
     if (reminder) {
@@ -270,43 +340,95 @@ export default function RemindersPage() {
   };
 
   const scheduleReminderNotification = async (reminder: ReminderData) => {
+    console.log(
+      `🔔 scheduleReminderNotification called for: ${reminder.title}`
+    );
     const now = new Date();
     const reminderTime = new Date(reminder.datetime);
     const delay = reminderTime.getTime() - now.getTime();
 
-    if (delay > 0) {
-      if (reminder.isRecurring) {
-        const intervals: { [key: string]: number } = {
-          daily: 24 * 60 * 60 * 1000,
-          weekly: 7 * 24 * 60 * 60 * 1000,
-          monthly: 30 * 24 * 60 * 60 * 1000,
-        };
+    console.log(
+      `⏰ Reminder time: ${reminderTime.toISOString()}, Now: ${now.toISOString()}, Delay: ${delay}ms`
+    );
 
-        const interval =
-          intervals[reminder.recurringType] * reminder.recurringInterval;
+    // For recurring reminders, start immediately regardless of past datetime
+    if (reminder.isRecurring) {
+      console.log(`🔄 Processing recurring reminder: ${reminder.title}`);
+      const intervals: { [key: string]: number } = {
+        minute: 1 * 60 * 1000,
+        every5minutes: 5 * 60 * 1000,
+        daily: 24 * 60 * 60 * 1000,
+        weekly: 7 * 24 * 60 * 60 * 1000,
+        monthly: 30 * 24 * 60 * 60 * 1000,
+      };
 
-        scheduleRecurringNotification(
-          reminder.title,
-          {
-            body: reminder.description,
-            icon: "/logo192.png",
-            tag: `reminder-${reminder.id}`,
-          },
-          interval
+      const interval =
+        intervals[reminder.recurringType] * reminder.recurringInterval;
+
+      console.log(
+        `⚡ Calculated interval: ${interval}ms for type: ${reminder.recurringType}`
+      );
+
+      // Start browser notifications immediately for recurring reminders
+      scheduleRecurringNotification(
+        reminder.title,
+        {
+          body: reminder.description,
+          icon: "/logo192.png",
+          tag: `reminder-${reminder.id}`,
+        },
+        interval
+      );
+
+      // Schedule Teams recurring notification if enabled
+      if (reminder.teamsNotificationEnabled) {
+        console.log(
+          `📱 Teams notifications enabled, scheduling Teams recurring notification...`
         );
+        try {
+          const result = scheduleTeamsRecurringNotification(
+            reminder.title,
+            reminder.description,
+            interval,
+            reminder.priority as "low" | "medium" | "high"
+          );
+
+          if (result.success) {
+            console.log(
+              "✅ Teams recurring notification scheduled:",
+              reminder.title
+            );
+          } else {
+            console.warn(
+              "⚠️ Teams recurring notification failed for:",
+              reminder.title
+            );
+          }
+        } catch (error) {
+          console.error(
+            "❌ Error scheduling Teams recurring notification:",
+            error
+          );
+        }
       } else {
-        scheduleNotification(
-          reminder.title,
-          {
-            body: reminder.description,
-            icon: "/logo192.png",
-            tag: `reminder-${reminder.id}`,
-          },
-          delay
-        );
+        console.log(`📱 Teams notifications disabled for: ${reminder.title}`);
       }
+    } else if (delay > 0) {
+      console.log(
+        `📅 Processing one-time reminder: ${reminder.title} (will fire in ${delay}ms)`
+      );
+      // For non-recurring reminders, only schedule if time hasn't passed
+      scheduleNotification(
+        reminder.title,
+        {
+          body: reminder.description,
+          icon: "/logo192.png",
+          tag: `reminder-${reminder.id}`,
+        },
+        delay
+      );
 
-      // Schedule Teams notification if enabled
+      // Schedule one-time Teams notification if enabled
       if (reminder.teamsNotificationEnabled) {
         try {
           const result = await scheduleTeamsReminderNotification(
@@ -325,6 +447,12 @@ export default function RemindersPage() {
           console.error("Error scheduling Teams notification:", error);
         }
       }
+    } else {
+      console.log(
+        `⏭️ Skipping past reminder: ${reminder.title} (was ${Math.abs(
+          delay
+        )}ms ago)`
+      );
     }
   };
 
@@ -407,6 +535,20 @@ export default function RemindersPage() {
 
   const formatRecurring = (reminder: ReminderData) => {
     if (!reminder.isRecurring) return "";
+
+    // Handle special cases for minute-based intervals
+    if (reminder.recurringType === "every5minutes") {
+      return "Repeats every 5 minutes";
+    }
+
+    if (reminder.recurringType === "minute") {
+      const interval =
+        reminder.recurringInterval > 1 ? `${reminder.recurringInterval} ` : "";
+      const type = reminder.recurringInterval > 1 ? "minutes" : "minute";
+      return `Repeats ${interval}${type}`;
+    }
+
+    // Handle existing day/week/month logic
     const interval =
       reminder.recurringInterval > 1 ? `${reminder.recurringInterval} ` : "";
     const type =
@@ -438,6 +580,16 @@ export default function RemindersPage() {
                     {teamsContext.selectedChannel &&
                       ` > ${teamsContext.selectedChannel.displayName}`}
                   </Typography>
+                  {teamsContext.selectedTeam &&
+                    teamsContext.selectedChannel && (
+                      <Chip
+                        label="Settings Saved"
+                        size="small"
+                        color="success"
+                        variant="outlined"
+                        sx={{ ml: 1, fontSize: "0.75rem" }}
+                      />
+                    )}
                 </Box>
               ) : (
                 <Button
@@ -469,6 +621,132 @@ export default function RemindersPage() {
               >
                 Test Teams
               </Button>
+
+              <Button
+                variant="outlined"
+                startIcon={<PlayArrow />}
+                onClick={async () => {
+                  console.log("🚀 Manual trigger activated!");
+                  console.log("📋 Current reminders:", reminders);
+                  console.log(
+                    "🔐 Teams authenticated:",
+                    teamsContext.isAuthenticated
+                  );
+                  console.log(
+                    "👥 Selected team:",
+                    teamsContext.selectedTeam?.displayName
+                  );
+                  console.log(
+                    "📢 Selected channel:",
+                    teamsContext.selectedChannel?.displayName
+                  );
+
+                  let triggeredCount = 0;
+                  let totalActiveReminders = 0;
+
+                  if (reminders.length === 0) {
+                    console.log(
+                      "⚠️ No reminders found, loading from storage..."
+                    );
+                    // Try to load reminders directly from file storage
+                    try {
+                      const storedReminders =
+                        userStorageService.getUserReminders(1);
+                      console.log("📦 Loaded from storage:", storedReminders);
+
+                      if (storedReminders.length > 0) {
+                        const mappedReminders = storedReminders.map(
+                          (r: StoredReminderData) => ({
+                            ...r,
+                            datetime: new Date(r.datetime),
+                            createdAt: new Date(r.createdAt),
+                            enableTeamsNotification:
+                              r.enableTeamsNotification ??
+                              r.teamsNotificationEnabled ??
+                              false,
+                          })
+                        );
+                        setReminders(mappedReminders);
+
+                        // Schedule notifications for the loaded reminders
+                        for (const reminder of mappedReminders) {
+                          if (reminder.active) {
+                            totalActiveReminders++;
+                            if (reminder.teamsNotificationEnabled) {
+                              console.log(
+                                `🔔 Manually triggering notification for: ${reminder.title}`
+                              );
+                              await scheduleReminderNotification(reminder);
+                              triggeredCount++;
+                            }
+                          }
+                        }
+                      }
+                    } catch (error) {
+                      console.error("❌ Error loading reminders:", error);
+                    }
+                  } else {
+                    // Schedule all existing reminders
+                    for (const reminder of reminders) {
+                      if (reminder.active) {
+                        totalActiveReminders++;
+                        if (reminder.teamsNotificationEnabled) {
+                          console.log(
+                            `🔔 Manually triggering notification for: ${reminder.title}`
+                          );
+                          await scheduleReminderNotification(reminder);
+                          triggeredCount++;
+                        }
+                      }
+                    }
+                  }
+
+                  // Provide detailed feedback
+                  const teamsConfigured =
+                    teamsContext.isAuthenticated &&
+                    teamsContext.selectedTeam &&
+                    teamsContext.selectedChannel;
+
+                  let message = `Found ${totalActiveReminders} active reminder${
+                    totalActiveReminders !== 1 ? "s" : ""
+                  }. `;
+
+                  if (triggeredCount > 0) {
+                    message += `Started ${triggeredCount} Teams notification${
+                      triggeredCount !== 1 ? "s" : ""
+                    }`;
+                    if (teamsConfigured) {
+                      message += ` to ${
+                        teamsContext.selectedTeam!.displayName
+                      } ${">"} ${teamsContext.selectedChannel!.displayName}`;
+                    }
+                    message += ".";
+                  } else if (totalActiveReminders > 0) {
+                    message += "No Teams notifications enabled on reminders.";
+                  } else {
+                    message += "No active reminders to process.";
+                  }
+
+                  if (!teamsConfigured) {
+                    message +=
+                      " Teams authentication or team/channel selection needed.";
+                  }
+
+                  sendNotification("Teams Notifications", {
+                    body: message,
+                  });
+                }}
+                color="secondary"
+                size="small"
+                disabled={
+                  !teamsContext.isAuthenticated ||
+                  !teamsContext.selectedTeam ||
+                  !teamsContext.selectedChannel
+                }
+              >
+                Start Teams Notifications
+              </Button>
+
               <Button
                 variant="contained"
                 startIcon={<Add />}
@@ -563,6 +841,69 @@ export default function RemindersPage() {
               </CardContent>
             </Card>
           )}
+
+          {/* Automation Status Panel */}
+          {teamsContext.isAuthenticated &&
+            teamsContext.selectedTeam &&
+            teamsContext.selectedChannel && (
+              <Card
+                sx={{
+                  mb: 3,
+                  backgroundColor: "#f8f9fa",
+                  border: "1px solid #e3f2fd",
+                }}
+              >
+                <CardContent>
+                  <Typography
+                    variant="h6"
+                    sx={{ mb: 2, color: "success.main" }}
+                  >
+                    <Groups sx={{ mr: 1, verticalAlign: "middle" }} />
+                    Automation Active
+                  </Typography>
+                  <Grid container spacing={2}>
+                    <Grid item xs={12} md={8}>
+                      <Typography variant="body2" color="text.secondary">
+                        Teams notifications will automatically be sent to:
+                      </Typography>
+                      <Typography
+                        variant="body1"
+                        sx={{ fontWeight: "medium", mt: 0.5 }}
+                      >
+                        {teamsContext.selectedTeam.displayName} {">"}{" "}
+                        {teamsContext.selectedChannel.displayName}
+                      </Typography>
+                      <Typography
+                        variant="body2"
+                        color="text.secondary"
+                        sx={{ mt: 1 }}
+                      >
+                        • Settings are saved and will persist across sessions
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        • Recurring reminders with Teams notifications will
+                        start automatically
+                      </Typography>
+                    </Grid>
+                    <Grid item xs={12} md={4}>
+                      <Box
+                        display="flex"
+                        alignItems="center"
+                        justifyContent="flex-end"
+                        gap={1}
+                      >
+                        <Chip
+                          label="Ready"
+                          color="success"
+                          size="small"
+                          sx={{ fontWeight: "medium" }}
+                        />
+                      </Box>
+                    </Grid>
+                  </Grid>
+                </CardContent>
+              </Card>
+            )}
 
           {reminders.length === 0 ? (
             <Card>
@@ -752,19 +1093,21 @@ export default function RemindersPage() {
 
               {formData.isRecurring && (
                 <Box sx={{ mt: 2 }}>
-                  <TextField
-                    label="Repeat every"
-                    type="number"
-                    value={formData.recurringInterval}
-                    onChange={(e) =>
-                      setFormData((prev) => ({
-                        ...prev,
-                        recurringInterval: parseInt(e.target.value),
-                      }))
-                    }
-                    inputProps={{ min: 1 }}
-                    sx={{ mr: 2, width: 120 }}
-                  />
+                  {formData.recurringType !== "every5minutes" && (
+                    <TextField
+                      label="Repeat every"
+                      type="number"
+                      value={formData.recurringInterval}
+                      onChange={(e) =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          recurringInterval: parseInt(e.target.value),
+                        }))
+                      }
+                      inputProps={{ min: 1 }}
+                      sx={{ mr: 2, width: 120 }}
+                    />
+                  )}
 
                   <FormControl sx={{ minWidth: 120 }}>
                     <InputLabel>Period</InputLabel>
@@ -774,10 +1117,17 @@ export default function RemindersPage() {
                         setFormData((prev) => ({
                           ...prev,
                           recurringType: e.target.value,
+                          // Set interval to 1 for every5minutes since it's a fixed interval
+                          recurringInterval:
+                            e.target.value === "every5minutes"
+                              ? 1
+                              : prev.recurringInterval,
                         }))
                       }
                       label="Period"
                     >
+                      <MenuItem value="minute">Minute(s)</MenuItem>
+                      <MenuItem value="every5minutes">Every 5 Minutes</MenuItem>
                       <MenuItem value="daily">Day(s)</MenuItem>
                       <MenuItem value="weekly">Week(s)</MenuItem>
                       <MenuItem value="monthly">Month(s)</MenuItem>
@@ -816,11 +1166,28 @@ export default function RemindersPage() {
                   color="textSecondary"
                   sx={{ ml: 4, display: "block" }}
                 >
-                  {teamsContext.isAuthenticated
-                    ? teamsContext.selectedTeam && teamsContext.selectedChannel
-                      ? `Notifications will be sent to ${teamsContext.selectedTeam.displayName} > ${teamsContext.selectedChannel.displayName}`
-                      : "Please select a team and channel above to enable Teams notifications"
-                    : "Sign in to Microsoft Teams to enable notifications"}
+                  {teamsContext.isAuthenticated ? (
+                    teamsContext.selectedTeam &&
+                    teamsContext.selectedChannel ? (
+                      <>
+                        <span>
+                          Notifications will be sent to{" "}
+                          {teamsContext.selectedTeam.displayName} {">"}{" "}
+                          {teamsContext.selectedChannel.displayName}
+                        </span>
+                        <br />
+                        <span
+                          style={{ fontWeight: "medium", color: "#4caf50" }}
+                        >
+                          Settings are automatically saved for future reminders
+                        </span>
+                      </>
+                    ) : (
+                      "Please select a team and channel above to enable Teams notifications"
+                    )
+                  ) : (
+                    "Sign in to Microsoft Teams to enable notifications"
+                  )}
                 </Typography>
               </Box>
             </DialogContent>

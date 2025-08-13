@@ -73,6 +73,47 @@ export const TeamsProvider: React.FC<TeamsProviderProps> = ({ children }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Storage helper functions for persistent team/channel selection
+  const saveTeamsSelection = useCallback(
+    (team: Team | null, channel: Channel | null) => {
+      try {
+        const selection = {
+          selectedTeam: team,
+          selectedChannel: channel,
+          timestamp: new Date().toISOString(),
+        };
+        localStorage.setItem(
+          "nudge-app-teams-selection",
+          JSON.stringify(selection)
+        );
+        console.log("💾 Teams selection saved:", {
+          team: team?.displayName,
+          channel: channel?.displayName,
+        });
+      } catch (error) {
+        console.error("Failed to save teams selection:", error);
+      }
+    },
+    []
+  );
+
+  const loadTeamsSelection = useCallback(() => {
+    try {
+      const stored = localStorage.getItem("nudge-app-teams-selection");
+      if (stored) {
+        const selection = JSON.parse(stored);
+        console.log("📂 Loaded teams selection:", selection);
+        return {
+          selectedTeam: selection.selectedTeam,
+          selectedChannel: selection.selectedChannel,
+        };
+      }
+    } catch (error) {
+      console.error("Failed to load teams selection:", error);
+    }
+    return { selectedTeam: null, selectedChannel: null };
+  }, []);
+
   const initializeAuth = useCallback(async () => {
     try {
       await graphService.initialize();
@@ -83,13 +124,19 @@ export const TeamsProvider: React.FC<TeamsProviderProps> = ({ children }) => {
         const account = graphService.getCurrentAccount();
         setUser(account);
         await loadTeams();
+
+        // After loading teams, try to restore previous selection
+        const storedSelection = loadTeamsSelection();
+        if (storedSelection.selectedTeam) {
+          console.log("🔄 Restoring previous teams selection...");
+          // We'll set this after teams are loaded in the loadTeams effect
+        }
       }
     } catch (error) {
       console.error("Failed to initialize auth:", error);
       setError("Failed to initialize authentication");
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [loadTeamsSelection]);
 
   useEffect(() => {
     initializeAuth();
@@ -124,6 +171,14 @@ export const TeamsProvider: React.FC<TeamsProviderProps> = ({ children }) => {
       setSelectedTeam(null);
       setChannels([]);
       setSelectedChannel(null);
+
+      // Clear stored teams selection on sign out
+      try {
+        localStorage.removeItem("nudge-app-teams-selection");
+        console.log("🗑️ Teams selection cleared on sign out");
+      } catch (error) {
+        console.error("Failed to clear teams selection:", error);
+      }
     } catch (error) {
       console.error("Sign out failed:", error);
       setError("Sign out failed");
@@ -137,43 +192,93 @@ export const TeamsProvider: React.FC<TeamsProviderProps> = ({ children }) => {
       setIsLoading(true);
       const teamsData = await graphService.getMyTeams();
       setTeams(teamsData);
+
+      // After teams are loaded, try to restore previous selection
+      const storedSelection = loadTeamsSelection();
+      if (storedSelection.selectedTeam && teamsData.length > 0) {
+        // Find the stored team in the current teams list
+        const matchingTeam = teamsData.find(
+          (t) => t.id === storedSelection.selectedTeam?.id
+        );
+        if (matchingTeam) {
+          console.log("✅ Restoring team selection:", matchingTeam.displayName);
+          // Use setTimeout to avoid state update issues
+          setTimeout(() => {
+            selectTeam(matchingTeam);
+          }, 100);
+        }
+      }
     } catch (error) {
       console.error("Failed to load teams:", error);
       setError("Failed to load teams");
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [loadTeamsSelection]);
 
-  const selectTeam = useCallback(async (team: Team) => {
-    try {
-      setSelectedTeam(team);
-      setIsLoading(true);
-      setChannels([]);
-      setSelectedChannel(null);
+  const selectTeam = useCallback(
+    async (team: Team) => {
+      try {
+        setSelectedTeam(team);
+        setIsLoading(true);
+        setChannels([]);
+        setSelectedChannel(null);
 
-      const channelsData = await graphService.getTeamChannels(team.id);
-      setChannels(channelsData);
+        const channelsData = await graphService.getTeamChannels(team.id);
+        setChannels(channelsData);
 
-      // Auto-select "General" channel or first available
-      const generalChannel = channelsData.find(
-        (c) => c.displayName.toLowerCase() === "general"
-      );
-      const defaultChannel = generalChannel || channelsData[0];
+        // Try to restore the previously selected channel first
+        const storedSelection = loadTeamsSelection();
+        let selectedChannelToSet: Channel | null = null;
 
-      if (defaultChannel) {
-        setSelectedChannel(defaultChannel);
+        if (
+          storedSelection.selectedChannel &&
+          storedSelection.selectedTeam?.id === team.id
+        ) {
+          // Find the stored channel in the current channels list
+          const matchingChannel = channelsData.find(
+            (c) => c.id === storedSelection.selectedChannel?.id
+          );
+          if (matchingChannel) {
+            console.log(
+              "✅ Restoring channel selection:",
+              matchingChannel.displayName
+            );
+            selectedChannelToSet = matchingChannel;
+          }
+        }
+
+        // If no stored channel was found, auto-select "General" channel or first available
+        if (!selectedChannelToSet) {
+          const generalChannel = channelsData.find(
+            (c) => c.displayName.toLowerCase() === "general"
+          );
+          selectedChannelToSet = generalChannel || channelsData[0];
+        }
+
+        if (selectedChannelToSet) {
+          setSelectedChannel(selectedChannelToSet);
+          // Save the selection
+          saveTeamsSelection(team, selectedChannelToSet);
+        }
+      } catch (error) {
+        console.error("Failed to load team channels:", error);
+        setError("Failed to load team channels");
+      } finally {
+        setIsLoading(false);
       }
-    } catch (error) {
-      console.error("Failed to load team channels:", error);
-      setError("Failed to load team channels");
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
+    },
+    [loadTeamsSelection, saveTeamsSelection]
+  );
 
   const selectChannel = (channel: Channel) => {
     setSelectedChannel(channel);
+    // Save the selection when channel is manually changed
+    saveTeamsSelection(selectedTeam, channel);
+    console.log("💾 Channel selection updated:", {
+      team: selectedTeam?.displayName,
+      channel: channel.displayName,
+    });
   };
 
   const sendMessage = async (
