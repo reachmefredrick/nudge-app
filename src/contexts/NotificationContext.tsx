@@ -96,10 +96,14 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
   const [permission, setPermission] =
     useState<NotificationPermission>("default");
   const [notifications, setNotifications] = useState<NotificationData[]>([]);
-  
+
   // Track active reminder timers to prevent duplicates
-  const [activeTimers, setActiveTimers] = useState<Map<string, NodeJS.Timeout>>(new Map());
-  const [scheduledReminders, setScheduledReminders] = useState<Set<string>>(new Set());
+  const [activeTimers, setActiveTimers] = useState<Map<string, NodeJS.Timeout>>(
+    new Map()
+  );
+  const [scheduledReminders, setScheduledReminders] = useState<Set<string>>(
+    new Set()
+  );
 
   // Get Teams context for Graph API integration
   const teamsContext = useTeams();
@@ -164,32 +168,41 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
   const scheduleRecurringNotification = useCallback(
     (title: string, options: NotificationOptions, interval: number) => {
       const reminderKey = `browser-${title}`;
-      
+
       // Check if this reminder is already scheduled
       if (scheduledReminders.has(reminderKey)) {
-        console.log(`⏭️ Skipping already scheduled browser notification: ${title}`);
+        console.log(
+          `⏭️ Skipping already scheduled browser notification: ${title}`
+        );
         return;
       }
-      
-      console.log(`🔄 Scheduling browser recurring notification: ${title} (interval: ${interval}ms)`);
-      
+
+      console.log(
+        `🔄 Scheduling browser recurring notification: ${title} (interval: ${interval}ms)`
+      );
+
       const scheduleNext = () => {
         sendNotification(title, options);
         const nextTimerId = setTimeout(scheduleNext, interval);
-        setActiveTimers(prev => new Map(prev.set(reminderKey, nextTimerId)));
+        setActiveTimers((prev) => new Map(prev.set(reminderKey, nextTimerId)));
       };
 
       // Start the first notification after the interval
       const initialTimerId = setTimeout(scheduleNext, interval);
-      setActiveTimers(prev => new Map(prev.set(reminderKey, initialTimerId)));
-      setScheduledReminders(prev => new Set(prev.add(reminderKey)));
-      
+      setActiveTimers((prev) => new Map(prev.set(reminderKey, initialTimerId)));
+      setScheduledReminders((prev) => new Set(prev.add(reminderKey)));
+
       console.log(`✅ Browser recurring notification scheduled: ${title}`);
     },
     [sendNotification, scheduledReminders]
   );
 
   const clearAllTimers = useCallback(() => {
+    // Skip during static generation or when running on server
+    if (typeof window === 'undefined') {
+      return;
+    }
+
     console.log("🧹 Clearing all active reminder timers...");
     activeTimers.forEach((timerId, reminderKey) => {
       clearTimeout(timerId);
@@ -503,15 +516,19 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
     ): { success: boolean; intervalId: NodeJS.Timeout | null } => {
       try {
         const reminderKey = `teams-${title}`;
-        
+
         // Check if this reminder is already scheduled
         if (scheduledReminders.has(reminderKey)) {
-          console.log(`⏭️ Skipping already scheduled Teams notification: ${title}`);
+          console.log(
+            `⏭️ Skipping already scheduled Teams notification: ${title}`
+          );
           return { success: true, intervalId: null };
         }
-        
-        console.log(`🔄 Scheduling Teams recurring notification: ${title} (interval: ${interval}ms)`);
-        
+
+        console.log(
+          `🔄 Scheduling Teams recurring notification: ${title} (interval: ${interval}ms)`
+        );
+
         const scheduleNext = async () => {
           try {
             console.log(`🔔 Sending Teams recurring notification: ${title}`);
@@ -553,10 +570,10 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
 
         // Schedule recurring notifications
         const intervalId = setInterval(scheduleNext, interval);
-        
+
         // Track the timer
-        setActiveTimers(prev => new Map(prev.set(reminderKey, intervalId)));
-        setScheduledReminders(prev => new Set(prev.add(reminderKey)));
+        setActiveTimers((prev) => new Map(prev.set(reminderKey, intervalId)));
+        setScheduledReminders((prev) => new Set(prev.add(reminderKey)));
 
         console.log(
           `✅ Teams recurring notification scheduled for "${title}" every ${interval}ms`
@@ -583,7 +600,7 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
       errors: string[];
     }> => {
       console.log("🔄 Re-scheduling all reminders...", reminders.length);
-      
+
       // Clear all existing timers first to prevent duplicates
       clearAllTimers();
 

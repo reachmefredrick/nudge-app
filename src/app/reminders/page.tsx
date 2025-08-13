@@ -89,7 +89,10 @@ interface FormData {
 }
 
 export default function RemindersPage() {
-  console.log("🎯 RemindersPage component rendering...");
+  // Only log during client-side execution
+  if (typeof window !== 'undefined') {
+    console.log("🎯 RemindersPage component rendering...");
+  }
 
   const [reminders, setReminders] = useState<ReminderData[]>([]);
   const [open, setOpen] = useState(false);
@@ -122,9 +125,18 @@ export default function RemindersPage() {
   const teamsContext = useTeams();
   const { user } = useAuth();
 
-  console.log("👤 Current user in RemindersPage:", user);
+  // Only log during client-side execution
+  if (typeof window !== 'undefined') {
+    console.log("👤 Current user in RemindersPage:", user);
+  }
 
   useEffect(() => {
+    // Skip loading during static generation or when running on server
+    if (typeof window === 'undefined') {
+      console.log("⏭️ Skipping reminders loading during static generation");
+      return;
+    }
+
     console.log("📦 Loading reminders useEffect triggered");
     // Initialize hybrid file storage
     hybridFileStorageService.initialize();
@@ -173,6 +185,11 @@ export default function RemindersPage() {
   }, [user]);
 
   useEffect(() => {
+    // Skip saving during static generation or when running on server
+    if (typeof window === 'undefined') {
+      return;
+    }
+
     // Save reminders to localStorage for the current user
     if (user && reminders.length >= 0) {
       const remindersToStore = reminders.map((r) => ({
@@ -187,6 +204,11 @@ export default function RemindersPage() {
 
   // Clear any existing timers when component mounts to prevent duplicates
   useEffect(() => {
+    // Skip during static generation or when running on server
+    if (typeof window === 'undefined') {
+      return;
+    }
+
     console.log("🧹 Clearing existing timers on component mount...");
     clearAllTimers();
   }, [clearAllTimers]); // Include dependency but only run on mount
