@@ -186,15 +186,19 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
         const scheduleNext = () => {
           sendNotification(title, options);
           const nextTimerId = setTimeout(scheduleNext, interval);
-          setActiveTimers((prev) => new Map(prev.set(reminderKey, nextTimerId)));
+          setActiveTimers(
+            (prev) => new Map(prev.set(reminderKey, nextTimerId))
+          );
         };
 
         // Start the first notification after the interval
         const initialTimerId = setTimeout(scheduleNext, interval);
-        setActiveTimers((prev) => new Map(prev.set(reminderKey, initialTimerId)));
+        setActiveTimers(
+          (prev) => new Map(prev.set(reminderKey, initialTimerId))
+        );
 
         console.log(`✅ Browser recurring notification scheduled: ${title}`);
-        
+
         // Return updated set
         return new Set(prevScheduled.add(reminderKey));
       });
@@ -209,7 +213,7 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
     }
 
     console.log("🧹 Clearing all active reminder timers...");
-    
+
     // Use functional updates to avoid dependencies on state
     setActiveTimers((prevTimers) => {
       prevTimers.forEach((timerId, reminderKey) => {
@@ -219,11 +223,11 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
       });
       return new Map();
     });
-    
+
     setScheduledReminders((prevScheduled) => {
       return new Set();
     });
-    
+
     console.log("✅ All timers cleared");
   }, []); // No dependencies since we use functional updates
 

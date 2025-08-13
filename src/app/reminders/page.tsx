@@ -220,8 +220,7 @@ export default function RemindersPage() {
 
     console.log("🧹 Clearing existing timers on component mount...");
     clearAllTimers();
-  }, []); // Empty dependency array - only run on mount
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clearAllTimers]); // Include stable function dependency
 
   const handleOpen = (reminder: ReminderData | null = null) => {
     if (reminder) {
