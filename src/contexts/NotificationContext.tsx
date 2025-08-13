@@ -169,50 +169,63 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
     (title: string, options: NotificationOptions, interval: number) => {
       const reminderKey = `browser-${title}`;
 
-      // Check if this reminder is already scheduled
-      if (scheduledReminders.has(reminderKey)) {
+      // Use functional update to avoid dependency on scheduledReminders
+      setScheduledReminders((prevScheduled) => {
+        // Check if this reminder is already scheduled
+        if (prevScheduled.has(reminderKey)) {
+          console.log(
+            `⏭️ Skipping already scheduled browser notification: ${title}`
+          );
+          return prevScheduled;
+        }
+
         console.log(
-          `⏭️ Skipping already scheduled browser notification: ${title}`
+          `🔄 Scheduling browser recurring notification: ${title} (interval: ${interval}ms)`
         );
-        return;
-      }
 
-      console.log(
-        `🔄 Scheduling browser recurring notification: ${title} (interval: ${interval}ms)`
-      );
+        const scheduleNext = () => {
+          sendNotification(title, options);
+          const nextTimerId = setTimeout(scheduleNext, interval);
+          setActiveTimers((prev) => new Map(prev.set(reminderKey, nextTimerId)));
+        };
 
-      const scheduleNext = () => {
-        sendNotification(title, options);
-        const nextTimerId = setTimeout(scheduleNext, interval);
-        setActiveTimers((prev) => new Map(prev.set(reminderKey, nextTimerId)));
-      };
+        // Start the first notification after the interval
+        const initialTimerId = setTimeout(scheduleNext, interval);
+        setActiveTimers((prev) => new Map(prev.set(reminderKey, initialTimerId)));
 
-      // Start the first notification after the interval
-      const initialTimerId = setTimeout(scheduleNext, interval);
-      setActiveTimers((prev) => new Map(prev.set(reminderKey, initialTimerId)));
-      setScheduledReminders((prev) => new Set(prev.add(reminderKey)));
-
-      console.log(`✅ Browser recurring notification scheduled: ${title}`);
+        console.log(`✅ Browser recurring notification scheduled: ${title}`);
+        
+        // Return updated set
+        return new Set(prevScheduled.add(reminderKey));
+      });
     },
-    [sendNotification, scheduledReminders]
+    [sendNotification]
   );
 
   const clearAllTimers = useCallback(() => {
     // Skip during static generation or when running on server
-    if (typeof window === 'undefined') {
+    if (typeof window === "undefined") {
       return;
     }
 
     console.log("🧹 Clearing all active reminder timers...");
-    activeTimers.forEach((timerId, reminderKey) => {
-      clearTimeout(timerId);
-      clearInterval(timerId); // In case it's an interval
-      console.log(`🗑️ Cleared timer for reminder: ${reminderKey}`);
+    
+    // Use functional updates to avoid dependencies on state
+    setActiveTimers((prevTimers) => {
+      prevTimers.forEach((timerId, reminderKey) => {
+        clearTimeout(timerId);
+        clearInterval(timerId); // In case it's an interval
+        console.log(`🗑️ Cleared timer for reminder: ${reminderKey}`);
+      });
+      return new Map();
     });
-    setActiveTimers(new Map());
-    setScheduledReminders(new Set());
+    
+    setScheduledReminders((prevScheduled) => {
+      return new Set();
+    });
+    
     console.log("✅ All timers cleared");
-  }, [activeTimers]);
+  }, []); // No dependencies since we use functional updates
 
   const markAsRead = useCallback((notificationId: number) => {
     setNotifications((prev) =>
@@ -517,11 +530,20 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
       try {
         const reminderKey = `teams-${title}`;
 
-        // Check if this reminder is already scheduled
-        if (scheduledReminders.has(reminderKey)) {
-          console.log(
-            `⏭️ Skipping already scheduled Teams notification: ${title}`
-          );
+        // Use functional update to check and prevent duplicates
+        let shouldSchedule = true;
+        setScheduledReminders((prevScheduled) => {
+          if (prevScheduled.has(reminderKey)) {
+            console.log(
+              `⏭️ Skipping already scheduled Teams notification: ${title}`
+            );
+            shouldSchedule = false;
+            return prevScheduled;
+          }
+          return new Set(prevScheduled.add(reminderKey));
+        });
+
+        if (!shouldSchedule) {
           return { success: true, intervalId: null };
         }
 
@@ -573,7 +595,6 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
 
         // Track the timer
         setActiveTimers((prev) => new Map(prev.set(reminderKey, intervalId)));
-        setScheduledReminders((prev) => new Set(prev.add(reminderKey)));
 
         console.log(
           `✅ Teams recurring notification scheduled for "${title}" every ${interval}ms`
@@ -588,7 +609,7 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
         return { success: false, intervalId: null };
       }
     },
-    [teamsContext, scheduledReminders]
+    [teamsContext]
   );
 
   const rescheduleAllReminders = useCallback(

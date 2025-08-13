@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   Box,
   Typography,
@@ -90,7 +90,7 @@ interface FormData {
 
 export default function RemindersPage() {
   // Only log during client-side execution
-  if (typeof window !== 'undefined') {
+  if (typeof window !== "undefined") {
     console.log("🎯 RemindersPage component rendering...");
   }
 
@@ -110,6 +110,9 @@ export default function RemindersPage() {
     teamsNotificationEnabled: false,
   });
 
+  // Use ref to track if we're in initial load to prevent save loop
+  const isInitialLoadRef = useRef(true);
+
   const {
     sendNotification,
     scheduleNotification,
@@ -126,13 +129,13 @@ export default function RemindersPage() {
   const { user } = useAuth();
 
   // Only log during client-side execution
-  if (typeof window !== 'undefined') {
+  if (typeof window !== "undefined") {
     console.log("👤 Current user in RemindersPage:", user);
   }
 
   useEffect(() => {
     // Skip loading during static generation or when running on server
-    if (typeof window === 'undefined') {
+    if (typeof window === "undefined") {
       console.log("⏭️ Skipping reminders loading during static generation");
       return;
     }
@@ -186,7 +189,13 @@ export default function RemindersPage() {
 
   useEffect(() => {
     // Skip saving during static generation or when running on server
-    if (typeof window === 'undefined') {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    // Skip saving during initial load to prevent loops
+    if (isInitialLoadRef.current) {
+      isInitialLoadRef.current = false;
       return;
     }
 
@@ -205,13 +214,14 @@ export default function RemindersPage() {
   // Clear any existing timers when component mounts to prevent duplicates
   useEffect(() => {
     // Skip during static generation or when running on server
-    if (typeof window === 'undefined') {
+    if (typeof window === "undefined") {
       return;
     }
 
     console.log("🧹 Clearing existing timers on component mount...");
     clearAllTimers();
-  }, [clearAllTimers]); // Include dependency but only run on mount
+  }, []); // Empty dependency array - only run on mount
+  // eslint-disable-next-line react-hooks/exhaustive-deps
 
   const handleOpen = (reminder: ReminderData | null = null) => {
     if (reminder) {
